@@ -1,12 +1,15 @@
 [settings]
 locked = true
 
+[vars]
+rust_version = "1.97.0"
+
 [tools]
-rust = "1.97.0"
+rust = "{{vars.rust_version}}"
 
 [tasks.build]
 description = "Build the optimized native executable"
-tools = { rust = "1.97.0" }
+tools = { rust = "{{vars.rust_version}}" }
 run = "cargo build --release"
 run_windows = "cmd.exe /d /c scripts\\build-windows.cmd"
 
