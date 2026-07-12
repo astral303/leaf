@@ -67,6 +67,23 @@ On Windows, if replacing the running `.exe` is blocked by the OS, rerun the Powe
 npm update -g @rivolink/leaf
 ```
 
+## Development Build
+
+This repository uses [Mise](https://mise.jdx.dev/) to provide a locked Rust toolchain for local development. Install Mise, then run:
+
+```bash
+mise install
+mise run build
+```
+
+To build and replace the locally installed executable in one command:
+
+```bash
+mise run install
+```
+
+On Windows, `install` replaces `%LOCALAPPDATA%\Programs\leaf\leaf.exe` and automatically loads the MSVC build environment. On macOS (including Apple Silicon), it installs the native build to `~/.local/bin/leaf`; ensure `~/.local/bin` is on your `PATH`.
+
 ## Usage
 
 ```bash
