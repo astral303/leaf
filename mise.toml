@@ -11,7 +11,7 @@ rust = "{{vars.rust_version}}"
 description = "Build the optimized native executable"
 tools = { rust = "{{vars.rust_version}}" }
 run = "cargo build --release"
-run_windows = "cmd.exe /d /c scripts\\build-windows.cmd"
+run_windows = "cmd.exe /d /c scripts\\build-windows.cmd build --release"
 
 [tasks.install]
 description = "Build and install the custom leaf executable"
