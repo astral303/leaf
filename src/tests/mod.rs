@@ -94,3 +94,7 @@ pub(super) fn unique_temp_dir(prefix: &str) -> PathBuf {
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{unique}"))
 }
+
+pub(super) fn portable_path_label(label: &str) -> String {
+    label.replace(std::path::MAIN_SEPARATOR, "/")
+}

@@ -1,4 +1,4 @@
-use super::unique_temp_dir;
+use super::{portable_path_label, unique_temp_dir};
 use crate::app::{App, AppConfig};
 use std::{
     fs,
@@ -38,7 +38,7 @@ fn fuzzy_file_picker_uses_depth_first_file_order() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(
         labels,
@@ -85,7 +85,7 @@ fn fuzzy_file_picker_keeps_depth_first_order_when_query_is_empty() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(
         labels,
@@ -127,7 +127,7 @@ fn fuzzy_file_picker_filters_entries_by_query() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(labels, vec!["docs/guide.md"]);
 
@@ -287,7 +287,7 @@ fn fuzzy_file_picker_prefers_contiguous_matches_over_earlier_scattered_matches()
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     let showcase_idx = labels
         .iter()
@@ -414,7 +414,7 @@ fn fuzzy_file_picker_prefers_shallower_paths_on_equal_scores() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(labels, vec!["case.md", "nested/deeper/case.md"]);
 
@@ -492,7 +492,7 @@ fn fuzzy_file_picker_skips_ignored_technical_directories() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| app.file_picker_entries()[*idx].label())
+        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(labels, vec![".notes/kept.md"]);
     assert_eq!(app.file_picker_truncation(), None);
