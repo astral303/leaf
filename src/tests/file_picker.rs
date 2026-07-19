@@ -1,4 +1,4 @@
-use super::portable_path_label;
+use super::normalize_path_separators;
 use crate::app::{App, AppConfig};
 use std::{
     fs,
@@ -86,12 +86,13 @@ fn fuzzy_file_picker_lists_markdown_files_from_subdirectories() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
+        .map(|idx| normalize_path_separators(app.file_picker_entries()[*idx].label()))
         .collect();
-    assert!(labels.contains(&"README.md".to_string()));
-    assert!(labels.contains(&"docs/guide.md".to_string()));
-    assert!(labels.contains(&"docs/nested/deep.markdown".to_string()));
-    assert!(!labels.contains(&"ignore.txt".to_string()));
+    let contains = |expected: &str| labels.iter().any(|label| label == expected);
+    assert!(contains("README.md"));
+    assert!(contains("docs/guide.md"));
+    assert!(contains("docs/nested/deep.markdown"));
+    assert!(!contains("ignore.txt"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -149,10 +150,11 @@ fn queued_fuzzy_picker_transitions_from_pending_to_loading_to_open() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
+        .map(|idx| normalize_path_separators(app.file_picker_entries()[*idx].label()))
         .collect();
-    assert!(labels.contains(&"README.md".to_string()));
-    assert!(labels.contains(&"docs/guide.md".to_string()));
+    let contains = |expected: &str| labels.iter().any(|label| label == expected);
+    assert!(contains("README.md"));
+    assert!(contains("docs/guide.md"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -190,7 +192,7 @@ fn fuzzy_file_picker_uses_depth_first_order_with_hidden_first() {
     let labels: Vec<_> = app
         .file_picker_filtered_indices()
         .iter()
-        .map(|idx| portable_path_label(app.file_picker_entries()[*idx].label()))
+        .map(|idx| normalize_path_separators(app.file_picker_entries()[*idx].label()))
         .collect();
     assert_eq!(
         labels,
