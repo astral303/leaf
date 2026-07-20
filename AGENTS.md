@@ -21,8 +21,7 @@ For a change that might become a pull request, create its branch from
 focused feature/fix and its necessary docs/tests.  In particular, exclude
 Mise files, `AGENTS.md`, the fork version suffix, and other fork-only changes.
 After the focused work is ready, merge or cherry-pick it into fork `main` for
-local use.  Current examples are `escape-shortcut-for-exit`,
-`space-backspace-page-navigation-upstream`, and
+local use.  Current examples are `viewer-keymap-overrides-upstream` and
 `normalize-file-picker-paths-upstream`; `mise-build-environment` is
 intentionally fork-only.
 
@@ -71,20 +70,20 @@ cmd.exe /d /c 'call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTo
 ```
 
 The current main branch's full suite passes on Windows.  The file-picker tests
-compare normalized paths using `src/tests/mod.rs::portable_path_label`; this
-is deliberately test-only.  The UI must keep displaying Windows-native `\`
-separators.  The helper returns `String`, so tests collecting its result have
-`Vec<String>` and use forms such as `labels.contains(&"README.md".to_string())`.
+compare normalized paths using `src/tests/mod.rs::normalize_path_separators`;
+this is deliberately test-only.  The UI must keep displaying Windows-native
+`\` separators.  Tests with `Vec<String>` use iterator comparisons such as
+`labels.iter().any(|label| label == expected)` to avoid temporary allocation.
 
 ## UI changes: places that are easy to miss
 
-- Keyboard behavior is mode-sensitive in `src/runtime/keyboard.rs`.  An Escape
-  shortcut in normal viewer mode must not override Escape handling for search,
-  goto-line, file picker, or other active input modes.
-- When changing visible shortcuts, update both `README.md` and the `?` popup in
-  `src/render/popup.rs`.
-- Space/Backspace page navigation is likewise normal-viewer behavior only;
-  preserve text input and picker behavior.
+- Keyboard behavior is mode-sensitive in `src/runtime/keyboard.rs`.  Modal
+  controls must keep precedence over configurable viewer bindings.
+- Viewer defaults and action descriptions live in `src/keymap/viewer.rs`.
+  Help, status, and catalog labels derive from the effective keymap; do not
+  add new handwritten viewer shortcuts in rendering code.
+- Personal shortcuts such as Escape to quit and Space/Backspace page
+  navigation belong in `[keymap.viewer]` in the local config, not fork code.
 
 ## Line endings
 
