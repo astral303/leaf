@@ -49,9 +49,10 @@ custom executable:
 - macOS: `~/.local/bin/leaf` (ensure that directory is on `PATH`)
 
 Windows builds use `scripts/build-windows.cmd`, which loads the Visual Studio
-Build Tools environment so Rust can find the MSVC linker.  Keep arguments out
-of that wrapper: it should forward them with `cargo %*`, while `mise.toml`
-defines the actual build arguments.
+Build Tools environment so Rust can find the MSVC linker.  It resolves Cargo
+from `CARGO_HOME` when Mise sets it and otherwise uses `PATH`.  Keep arguments
+out of that wrapper: it should forward `%*`, while `mise.toml` defines the
+actual build arguments.
 
 The fork's `Cargo.toml` version suffix (`-astral303-1`) is intentional and
 makes `leaf --version` a quick check that the custom binary is in use.  Do not
