@@ -24,10 +24,14 @@ _leaf() {
             COMPREPLY=($(compgen -W "bash zsh fish powershell" -- "$cur"))
             return
             ;;
+        --show-keymap-actions)
+            COMPREPLY=($(compgen -W "viewer" -- "$cur"))
+            return
+            ;;
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "--help --version --watch --theme --editor --inline --width --picker --config --update --auto-complete -h -V -w -e" -- "$cur"))
+        COMPREPLY=($(compgen -W "--help --version --watch --theme --editor --inline --width --picker --config --update --auto-complete --show-keymap-actions --include-hidden-keymap-actions -h -V -w -e" -- "$cur"))
         return
     fi
 

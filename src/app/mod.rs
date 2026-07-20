@@ -1,4 +1,5 @@
 use crate::{
+    keymap::viewer::{default_keymap, ViewerKeymap},
     markdown::{
         build_searchable_lines,
         toc::{toc_levels, TocEntry},
@@ -170,6 +171,7 @@ pub(crate) struct App {
     max_width: Option<usize>,
     tab_title_max_filename_len: Option<usize>,
     mouse_capture: bool,
+    viewer_keymap: ViewerKeymap,
 }
 
 impl App {
@@ -329,6 +331,7 @@ impl App {
             max_width: None,
             tab_title_max_filename_len: None,
             mouse_capture: true,
+            viewer_keymap: default_keymap(),
         };
         app.store_current_theme_preview();
         app.refresh_static_caches();
@@ -361,6 +364,15 @@ impl App {
 
     pub(crate) fn is_mouse_capture_enabled(&self) -> bool {
         self.mouse_capture
+    }
+
+    pub(crate) fn viewer_keymap(&self) -> &ViewerKeymap {
+        &self.viewer_keymap
+    }
+
+    pub(crate) fn set_viewer_keymap(&mut self, keymap: ViewerKeymap) {
+        self.viewer_keymap = keymap;
+        self.status_cache_key = None;
     }
 
     pub(crate) fn toggle_mouse_capture(&mut self) -> bool {

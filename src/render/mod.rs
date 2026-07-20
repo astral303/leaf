@@ -13,6 +13,8 @@ use ratatui::{
 #[cfg(test)]
 pub(crate) use popup::wrap_path_lines;
 pub(crate) use status::build_status_bar;
+#[cfg(test)]
+pub(crate) use status::status_hint_segments;
 pub(crate) use toc::{build_toc_line_with_index, toc_header_line};
 
 pub(crate) const CONTENT_HORIZONTAL_PADDING: u16 = 1;

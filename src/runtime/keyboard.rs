@@ -1,4 +1,7 @@
-use crate::app::{App, WatchFlash};
+use crate::{
+    app::{App, WatchFlash},
+    keymap::viewer::ViewerAction,
+};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -19,23 +22,6 @@ pub(super) fn handle_key_event(
     ss: &SyntaxSet,
     themes: &ThemeSet,
 ) -> anyhow::Result<HandleResult> {
-    if matches!(key.code, KeyCode::Char('m') | KeyCode::Char('M'))
-        && !key.modifiers.contains(KeyModifiers::CONTROL)
-    {
-        let in_text_input = app.is_search_mode()
-            || app.is_goto_line_mode()
-            || (app.is_file_picker_open() && app.is_fuzzy_file_picker());
-        if !in_text_input {
-            let now_enabled = app.toggle_mouse_capture();
-            if now_enabled {
-                execute!(terminal.backend_mut(), EnableMouseCapture)?;
-            } else {
-                execute!(terminal.backend_mut(), DisableMouseCapture)?;
-            }
-            return Ok(HandleResult::Continue { redraw: true });
-        }
-    }
-
     let mut state_changed = true;
     if app.is_help_open() {
         match key.code {
@@ -254,127 +240,109 @@ pub(super) fn handle_key_event(
                 return Ok(HandleResult::Continue { redraw: true });
             }
             mode_exited = app.exit_code_select_mode();
-        } else if try_code_select_entry(app, &key) {
-            return Ok(HandleResult::Continue { redraw: true });
         }
-        match key.code {
-            KeyCode::Esc if app.has_active_goto_line() => app.clear_active_goto_line(),
-            KeyCode::Esc if app.has_active_search() => app.clear_active_search(),
-            KeyCode::Enter if app.has_active_search() => app.next_match(),
-            KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.queue_fuzzy_file_picker(app.picker_dir());
-            }
-            KeyCode::Char('q') | KeyCode::Char('Q') => return Ok(HandleResult::Break),
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if app.has_active_search() {
-                    app.clear_active_search();
-                } else if app.has_active_goto_line() {
-                    app.clear_active_goto_line();
-                } else {
-                    return Ok(HandleResult::Break);
-                }
-            }
-            KeyCode::Char('j') | KeyCode::Down => app.scroll_down(1),
-            KeyCode::Char('k') | KeyCode::Up => app.scroll_up(1),
-            KeyCode::Char('d') | KeyCode::PageDown => app.scroll_down(20),
-            KeyCode::Char('u') | KeyCode::PageUp => app.scroll_up(20),
-            KeyCode::Char('g') | KeyCode::Home => app.scroll_top(),
-            KeyCode::Char('G') | KeyCode::End => app.scroll_bottom(),
-            KeyCode::Char('J') if app.can_scroll_toc() => app.focus_next_top_level_toc(),
-            KeyCode::Char('K') if app.can_scroll_toc() => app.focus_prev_top_level_toc(),
-            KeyCode::Char('D') if app.can_scroll_toc() => {
-                app.scroll_toc_down(app.toc_half_page_step());
-            }
-            KeyCode::Char('U') if app.can_scroll_toc() => {
-                app.scroll_toc_up(app.toc_half_page_step());
-            }
-            KeyCode::Char('t') => app.toggle_toc(),
-            KeyCode::Char('T') => {
-                app.open_theme_picker();
-            }
-            KeyCode::Char('E') => {
-                app.open_editor_picker();
-            }
-            KeyCode::Char('?') => {
-                app.open_help();
-            }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.toggle_watch();
-            }
-            KeyCode::Char('w') => {
-                app.toggle_watch();
-            }
-            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                if app.filepath().is_none() {
-                    let flash = app.watch_flash_for_no_file();
-                    app.set_watch_flash(flash);
-                } else if !app.is_watch_enabled() {
-                    app.set_watch_flash(WatchFlash::NotActive);
-                } else if !app.request_reload(ss, themes) {
-                    app.set_watch_flash(WatchFlash::FileNotFound);
-                }
-            }
-            KeyCode::Char('r') => {
-                if app.filepath().is_none() {
-                    let flash = app.watch_flash_for_no_file();
-                    app.set_watch_flash(flash);
-                } else if !app.is_watch_enabled() {
-                    app.set_watch_flash(WatchFlash::NotActive);
-                } else if !app.request_reload(ss, themes) {
-                    app.set_watch_flash(WatchFlash::FileNotFound);
-                }
-            }
-            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.clear_active_goto_line();
-                app.begin_search()
-            }
-            KeyCode::Char('/') => {
-                app.clear_active_goto_line();
-                app.begin_search()
-            }
-            KeyCode::Char('n') => app.next_match(),
-            KeyCode::Char('N') => app.prev_match(),
-            KeyCode::Char('R') => {
-                app.copy_path_to_clipboard_relative();
-            }
-            KeyCode::Char('A') => {
-                app.copy_path_to_clipboard_absolute();
-            }
-            KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.begin_goto_line()
-            }
-            KeyCode::Char('l') | KeyCode::Char('L') => app.toggle_line_numbers(),
-            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                handle_open_in_editor(terminal, app, ss, themes)?;
-            }
-            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.queue_fuzzy_file_picker(app.picker_dir());
-            }
-            KeyCode::Char('P') => {
-                app.queue_file_picker(app.picker_dir());
-            }
-            KeyCode::Char('p') => {
-                app.open_path_popup();
-            }
-            KeyCode::Char('0') => {
-                app.toggle_reverse_mode();
-                state_changed = false;
-            }
-            KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
-                if let Some(n) = c.to_digit(10) {
-                    app.cycle_numkey(n as u8);
-                }
-            }
-            _ => state_changed = false,
-        }
-        if mode_exited {
-            state_changed = true;
+        let ctrl_c = key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL;
+        if key.code == KeyCode::Esc && app.has_active_goto_line() {
+            app.clear_active_goto_line();
+        } else if key.code == KeyCode::Esc && app.has_active_search() {
+            app.clear_active_search();
+        } else if key.code == KeyCode::Enter && app.has_active_search() {
+            app.next_match();
+        } else if ctrl_c && app.has_active_search() {
+            app.clear_active_search();
+        } else if ctrl_c && app.has_active_goto_line() {
+            app.clear_active_goto_line();
+        } else if let Some(action) = app.viewer_keymap().action_for(&key) {
+            return handle_viewer_action(terminal, app, action, ss, themes);
+        } else {
+            state_changed = mode_exited;
         }
     }
 
     Ok(HandleResult::Continue {
         redraw: state_changed,
     })
+}
+
+fn handle_viewer_action(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    action: ViewerAction,
+    ss: &SyntaxSet,
+    themes: &ThemeSet,
+) -> anyhow::Result<HandleResult> {
+    use ViewerAction::*;
+
+    let mut redraw = true;
+    match action {
+        Quit => return Ok(HandleResult::Break),
+        ScrollDown => app.scroll_down(1),
+        ScrollUp => app.scroll_up(1),
+        PageDown => app.scroll_down(20),
+        PageUp => app.scroll_up(20),
+        ScrollTop => app.scroll_top(),
+        ScrollBottom => app.scroll_bottom(),
+        FocusNextToc if app.can_scroll_toc() => app.focus_next_top_level_toc(),
+        FocusPreviousToc if app.can_scroll_toc() => app.focus_prev_top_level_toc(),
+        ScrollTocDown if app.can_scroll_toc() => app.scroll_toc_down(app.toc_half_page_step()),
+        ScrollTocUp if app.can_scroll_toc() => app.scroll_toc_up(app.toc_half_page_step()),
+        FocusNextToc | FocusPreviousToc | ScrollTocDown | ScrollTocUp => redraw = false,
+        ToggleToc => app.toggle_toc(),
+        OpenThemePicker => app.open_theme_picker(),
+        OpenEditorPicker => app.open_editor_picker(),
+        OpenHelp => app.open_help(),
+        ToggleWatch => app.toggle_watch(),
+        Reload => reload(app, ss, themes),
+        StartSearch => {
+            app.clear_active_goto_line();
+            app.begin_search();
+        }
+        NextMatch => app.next_match(),
+        PreviousMatch => app.prev_match(),
+        CopyRelativePath => app.copy_path_to_clipboard_relative(),
+        CopyAbsolutePath => app.copy_path_to_clipboard_absolute(),
+        StartGotoLine => app.begin_goto_line(),
+        ToggleLineNumbers => app.toggle_line_numbers(),
+        OpenInEditor => handle_open_in_editor(terminal, app, ss, themes)?,
+        OpenFuzzyPicker => app.queue_fuzzy_file_picker(app.picker_dir()),
+        OpenFileBrowser => app.queue_file_picker(app.picker_dir()),
+        OpenPathViewer => app.open_path_popup(),
+        ToggleReverseNavigation => {
+            app.toggle_reverse_mode();
+            redraw = false;
+        }
+        Jump1 => app.cycle_numkey(1),
+        Jump2 => app.cycle_numkey(2),
+        Jump3 => app.cycle_numkey(3),
+        Jump4 => app.cycle_numkey(4),
+        Jump5 => app.cycle_numkey(5),
+        Jump6 => app.cycle_numkey(6),
+        Jump7 => app.cycle_numkey(7),
+        Jump8 => app.cycle_numkey(8),
+        Jump9 => app.cycle_numkey(9),
+        EnterCodeSelection => app.enter_code_select_mode(),
+        CopyVisibleCode => app.copy_first_visible_code_block(),
+        ToggleMouseCapture => {
+            let enabled = app.toggle_mouse_capture();
+            if enabled {
+                execute!(terminal.backend_mut(), EnableMouseCapture)?;
+            } else {
+                execute!(terminal.backend_mut(), DisableMouseCapture)?;
+            }
+        }
+    }
+    Ok(HandleResult::Continue { redraw })
+}
+
+fn reload(app: &mut App, ss: &SyntaxSet, themes: &ThemeSet) {
+    if app.filepath().is_none() {
+        let flash = app.watch_flash_for_no_file();
+        app.set_watch_flash(flash);
+    } else if !app.is_watch_enabled() {
+        app.set_watch_flash(WatchFlash::NotActive);
+    } else if !app.request_reload(ss, themes) {
+        app.set_watch_flash(WatchFlash::FileNotFound);
+    }
 }
 
 fn handle_code_select_key(app: &mut App, key: &KeyEvent) -> bool {
@@ -402,23 +370,6 @@ fn handle_code_select_key(app: &mut App, key: &KeyEvent) -> bool {
         }
         KeyCode::Esc => {
             app.exit_code_select_mode();
-            true
-        }
-        _ => false,
-    }
-}
-
-fn try_code_select_entry(app: &mut App, key: &KeyEvent) -> bool {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    match key.code {
-        KeyCode::Char('y') if ctrl => {
-            app.copy_first_visible_code_block();
-            true
-        }
-        KeyCode::Char('c') | KeyCode::Char('y') | KeyCode::Char('C') | KeyCode::Char('Y')
-            if !ctrl =>
-        {
-            app.enter_code_select_mode();
             true
         }
         _ => false,

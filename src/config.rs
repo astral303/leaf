@@ -27,8 +27,21 @@ pub(crate) struct LeafConfig {
     )]
     pub(crate) tab_title_length: Option<i32>,
     pub(crate) themes: BTreeMap<String, CustomThemeConfig>,
+    pub(crate) keymap: KeymapConfig,
     #[serde(skip)]
     pub(crate) config_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub(crate) struct KeymapConfig {
+    pub(crate) viewer: BTreeMap<String, String>,
+}
+
+pub(crate) fn resolve_viewer_keymap(
+    config: &LeafConfig,
+) -> anyhow::Result<crate::keymap::viewer::ViewerKeymap> {
+    crate::keymap::viewer::resolve(&config.keymap.viewer).map_err(anyhow::Error::msg)
 }
 
 fn deserialize_lenient_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>

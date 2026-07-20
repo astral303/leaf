@@ -54,6 +54,10 @@
   - `keyboard.rs`  :  keyboard handling with mode-aware branching (help → picker_loading → picker_failed → file_picker → theme_picker → editor_picker → path_popup → goto_line → search → normal)
   - `mouse.rs`  :  mouse handling (scroll, click, double-click, scrollbar drag, link hover)
 
+- `src/keymap/`
+  - `mod.rs`  :  key parsing, normalization, sparse overrides, and the generic `BindingSet<A>`
+  - `viewer.rs`  :  viewer actions, built-in bindings, descriptions, and keymap catalog output
+
 - `src/theme/`
   - `mod.rs`  :  theme types, global state, preset selection API
   - `presets.rs`  :  built-in theme definitions (Arctic, Forest, OceanDark, SolarizedDark)
@@ -69,7 +73,8 @@
 
 - `src/config.rs`
   - `config.toml` loading and creation (`--config`, `--config reset`)
-  - `LeafConfig` defaults (theme, editor, watch, width, extras) with CLI overrides
+  - `LeafConfig` defaults (theme, editor, watch, width, extras, keymap) with CLI overrides
+  - viewer keymap validation before terminal initialization
 
 - `src/completions.rs`
   - shell completion installation (`--auto-complete`)
@@ -107,28 +112,32 @@
   - `config.rs`  :  configuration parsing tests
   - `completions.rs`  :  auto-complete argument parsing and completion script installation tests
   - `inline.rs`  :  inline spec parsing, format resolution, and write_lines tests
+  - `keymap.rs`  :  default bindings, exact modifiers, sparse overrides, and validation
   - `update.rs`  :  release asset matching and checksum verification
 
 ## Execution flow
 
-1. `main.rs` parses CLI options, loads `config.toml`, and handles standalone commands (`--auto-complete`, `--config`, `--update`) before any document is opened.
+1. `main.rs` parses CLI options, loads `config.toml`, and handles standalone commands (`--auto-complete`, `--config`, `--show-keymap-actions`, `--update`) before any document is opened.
 2. A document is loaded from:
    - a file argument, or
    - `stdin`, or
    - the file picker if no input is provided interactively.
 3. `markdown/` parses the source into rendered lines + TOC.
 4. If `--inline` is active, `inline.rs` writes lines to stdout and exits.
-5. `App` stores the state and caches.
+5. `App` stores the state, effective viewer keymap, and caches.
 6. `runtime.rs` runs the event loop:
    - processes pending picker queue → spawns loading thread
    - polls picker loading → installs results when ready
-   - handles input events through mode-aware branching
+   - handles modal input through mode-aware branching
+   - dispatches ordinary viewer input through the effective `ViewerKeymap`
 7. `render/` draws each frame from `App`.
 
 ## Application modes
 
 - **Initial mode** (`!app.has_content()`): no file loaded, picker is the main view. Quit shortcuts exit the app.
 - **Preview mode** (`app.has_content()`): file loaded via argument, stdin, or picker selection. Quit shortcuts in pickers close the popup and return to the preview.
+
+Modal controls take precedence over viewer bindings. Search, picker, help, go-to-line, and code-selection modes keep their local controls; viewer overrides apply after those modes have been handled.
 
 ## Picker lifecycle
 

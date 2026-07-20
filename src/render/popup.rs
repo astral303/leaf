@@ -1,6 +1,7 @@
 use crate::{
     app::{App, PathKind, FLASH_DURATION_MS},
     cli::version_text,
+    keymap::viewer::{key_label, ViewerAction},
     theme::{app_theme, theme_preset_label, THEME_PRESETS},
 };
 use ratatui::{
@@ -75,9 +76,9 @@ pub(super) fn popup_footer_line(segments: &[&'static str], bg: Color) -> Line<'s
     Line::from(spans)
 }
 
-pub(super) fn render_help_popup(f: &mut Frame, _app: &App) {
+pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
     let theme = app_theme();
-    let area = centered_rect(53, 26, f.area());
+    let area = centered_rect(69, 29, f.area());
 
     let select_hint =
         crate::editor::selection_modifier_label(&crate::editor::detect_terminal_emulator());
@@ -92,6 +93,31 @@ pub(super) fn render_help_popup(f: &mut Frame, _app: &App) {
     let title_style = Style::default()
         .fg(theme.markdown.heading_2)
         .add_modifier(Modifier::BOLD);
+    use ViewerAction::*;
+    let row = |left_actions: &[ViewerAction],
+               left_description: &str,
+               right_keys: String,
+               right_description: &str| {
+        help_row(
+            key_label(app.viewer_keymap(), left_actions, 18),
+            left_description,
+            right_keys,
+            right_description,
+            key_style,
+            text_style,
+        )
+    };
+    let action_row = |left_actions: &[ViewerAction],
+                      left_description: &str,
+                      right_actions: &[ViewerAction],
+                      right_description: &str| {
+        row(
+            left_actions,
+            left_description,
+            key_label(app.viewer_keymap(), right_actions, 18),
+            right_description,
+        )
+    };
     let lines = vec![
         Line::from(vec![Span::styled(version_text().to_string(), title_style)]),
         Line::from(vec![Span::styled(
@@ -100,108 +126,98 @@ pub(super) fn render_help_popup(f: &mut Frame, _app: &App) {
         )]),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "Navigation                  Mouse",
+            "Navigation                            Mouse",
             section_style,
         )]),
-        Line::from(vec![
-            Span::styled("j/k, ↑/↓   ", key_style),
-            Span::styled("scroll", text_style),
-            Span::raw("           "),
-            Span::styled("shift+m     ", key_style),
-            Span::styled("capture", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("u/d        ", key_style),
-            Span::styled("page up/down", text_style),
-            Span::raw("     "),
-            Span::styled("dbl-click   ", key_style),
-            Span::styled("copy code", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("g/G        ", key_style),
-            Span::styled("top/bottom", text_style),
-            Span::raw("       "),
-            Span::styled("dbl-click   ", key_style),
-            Span::styled("copy link", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("1-9/0+1-9  ", key_style),
-            Span::styled("jump/reverse", text_style),
-            Span::raw("     "),
-            Span::styled("ctrl+click  ", key_style),
-            Span::styled("open link", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("y/Y, c/C   ", key_style),
-            Span::styled("focus code", text_style),
-            Span::raw("       "),
-            Span::styled(format!("{select_hint:<12}"), key_style),
-            Span::styled("slct text", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("J/K, U/D   ", key_style),
-            Span::styled("navigate toc", text_style),
-        ]),
+        action_row(
+            &[ScrollDown, ScrollUp],
+            "scroll",
+            &[ToggleMouseCapture],
+            "capture",
+        ),
+        row(
+            &[PageDown, PageUp],
+            "page up/down",
+            "dbl-click".to_string(),
+            "copy code",
+        ),
+        row(
+            &[ScrollTop, ScrollBottom],
+            "top/bottom",
+            "dbl-click".to_string(),
+            "copy link",
+        ),
+        row(
+            &[
+                ToggleReverseNavigation,
+                Jump1,
+                Jump2,
+                Jump3,
+                Jump4,
+                Jump5,
+                Jump6,
+                Jump7,
+                Jump8,
+                Jump9,
+            ],
+            "jump/reverse",
+            "ctrl+click".to_string(),
+            "open link",
+        ),
+        row(
+            &[EnterCodeSelection],
+            "focus code",
+            select_hint.to_string(),
+            "select text",
+        ),
+        row(
+            &[FocusNextToc, FocusPreviousToc, ScrollTocDown, ScrollTocUp],
+            "navigate toc",
+            String::new(),
+            "",
+        ),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Search                      ", section_style),
+            Span::styled("Search                                ", section_style),
             Span::styled("Watch", section_style),
         ]),
-        Line::from(vec![
-            Span::styled("ctrl+f     ", key_style),
-            Span::styled("find", text_style),
-            Span::raw("             "),
-            Span::styled("ctrl+w, w   ", key_style),
-            Span::styled("toggle", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("n/N        ", key_style),
-            Span::styled("next/prev", text_style),
-            Span::raw("        "),
-            Span::styled("ctrl+r, r   ", key_style),
-            Span::styled("reload", text_style),
-        ]),
+        action_row(&[StartSearch], "find", &[ToggleWatch], "toggle"),
+        action_row(
+            &[NextMatch, PreviousMatch],
+            "next/prev",
+            &[Reload],
+            "reload",
+        ),
         Line::from(""),
         Line::from(vec![Span::styled("Actions", section_style)]),
-        Line::from(vec![
-            Span::styled("shift+e    ", key_style),
-            Span::styled("editor picker", text_style),
-            Span::raw("    "),
-            Span::styled("ctrl+e      ", key_style),
-            Span::styled("edit", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("shift+l    ", key_style),
-            Span::styled("line number", text_style),
-            Span::raw("      "),
-            Span::styled("ctrl+l      ", key_style),
-            Span::styled("goto", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("shift+p    ", key_style),
-            Span::styled("file browser", text_style),
-            Span::raw("     "),
-            Span::styled("ctrl+p      ", key_style),
-            Span::styled("pick", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("shift+t    ", key_style),
-            Span::styled("theme picker", text_style),
-            Span::raw("     "),
-            Span::styled("?           ", key_style),
-            Span::styled("help", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("p          ", key_style),
-            Span::styled("path viewer", text_style),
-            Span::raw("      "),
-            Span::styled("q           ", key_style),
-            Span::styled("quit", text_style),
-        ]),
-        Line::from(vec![
-            Span::styled("t          ", key_style),
-            Span::styled("toggle toc", text_style),
-        ]),
+        action_row(
+            &[OpenEditorPicker],
+            "editor picker",
+            &[OpenInEditor],
+            "edit",
+        ),
+        action_row(
+            &[ToggleLineNumbers],
+            "line numbers",
+            &[StartGotoLine],
+            "goto",
+        ),
+        action_row(
+            &[OpenFileBrowser],
+            "file browser",
+            &[OpenFuzzyPicker],
+            "pick",
+        ),
+        action_row(&[OpenThemePicker], "theme picker", &[OpenHelp], "help"),
+        action_row(&[OpenPathViewer], "path viewer", &[Quit], "quit"),
+        action_row(
+            &[CopyRelativePath],
+            "copy rel path",
+            &[CopyAbsolutePath],
+            "copy abs path",
+        ),
+        action_row(&[ToggleToc], "toggle toc", &[CopyVisibleCode], "copy code"),
+        Line::from(""),
         Line::from(""),
         popup_footer_line(&["esc close", "? close"], theme.ui.toc_bg),
     ];
@@ -218,6 +234,22 @@ pub(super) fn render_help_popup(f: &mut Frame, _app: &App) {
         ),
         area,
     );
+}
+
+fn help_row(
+    left_keys: String,
+    left_description: &str,
+    right_keys: String,
+    right_description: &str,
+    key_style: Style,
+    text_style: Style,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{left_keys:<19}"), key_style),
+        Span::styled(format!("{left_description:<16}"), text_style),
+        Span::styled(format!("{right_keys:<19}"), key_style),
+        Span::styled(right_description.to_string(), text_style),
+    ])
 }
 
 pub(super) fn render_theme_popup(f: &mut Frame, app: &App) {
