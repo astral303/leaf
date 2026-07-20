@@ -48,11 +48,19 @@ $global:LeafCompleter = {
                 }
             return
         }
+        '--show-keymap-actions' {
+            @('viewer') |
+                Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+            return
+        }
     }
 
     if ($wordToComplete -like '-*') {
         @('--help', '--version', '--watch', '--theme', '--editor', '--inline',
           '--width', '--picker', '--config', '--update', '--auto-complete',
+          '--show-keymap-actions', '--include-hidden-keymap-actions',
           '-h', '-V', '-w', '-e') |
             Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                 [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterName', $_)

@@ -80,3 +80,17 @@ watch = false
 # Minimum accepted: 20. Any other value falls back to no truncation.
 # Default: -1 (no truncation)
 # tab-title-length = -1
+
+# Viewer keybindings
+# Add only the keys you want to change. Each entry replaces the built-in
+# binding for that key. Set an entry to "none" to remove its binding.
+#
+# Modifiers are exact and can use ctrl, alt (Option on macOS), and shift.
+# Run `leaf --show-keymap-actions viewer` to see the effective keymap and
+# available action names. Every action must keep at least one binding.
+#
+# [keymap.viewer]
+# "esc" = "quit"
+# "space" = "page-down"
+# "backspace" = "page-up"
+# "q" = "none"

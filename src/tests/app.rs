@@ -202,6 +202,48 @@ fn parse_cli_rejects_empty_theme_name() {
 }
 
 #[test]
+fn parse_cli_accepts_viewer_keymap_catalog_forms() {
+    for args in [
+        vec![
+            "leaf".to_string(),
+            "--show-keymap-actions".to_string(),
+            "viewer".to_string(),
+        ],
+        vec![
+            "leaf".to_string(),
+            "--show-keymap-actions=viewer".to_string(),
+            "--include-hidden-keymap-actions".to_string(),
+        ],
+    ] {
+        let options = parse_cli(&args).unwrap();
+        assert_eq!(options.show_keymap_actions.as_deref(), Some("viewer"));
+    }
+}
+
+#[test]
+fn parse_cli_rejects_invalid_keymap_catalog_usage() {
+    let unknown = vec![
+        "leaf".to_string(),
+        "--show-keymap-actions".to_string(),
+        "browser".to_string(),
+    ];
+    assert!(parse_cli(&unknown).is_err());
+
+    let hidden_alone = vec![
+        "leaf".to_string(),
+        "--include-hidden-keymap-actions".to_string(),
+    ];
+    assert!(parse_cli(&hidden_alone).is_err());
+
+    let with_file = vec![
+        "leaf".to_string(),
+        "--show-keymap-actions=viewer".to_string(),
+        "README.md".to_string(),
+    ];
+    assert!(parse_cli(&with_file).is_err());
+}
+
+#[test]
 fn cancelling_search_clears_query_and_matches() {
     let (ss, theme) = test_assets();
     let (lines, toc, _, _) = parse_markdown(

@@ -62,6 +62,27 @@ Use these keys while viewing the fixture:
 - `/` to search for `tokyo-signal`
 - `n` and `N` to move through search matches
 
+### Viewer Keybindings
+
+Add a temporary override to your `config.toml`:
+
+```toml
+[keymap.viewer]
+"esc" = "quit"
+"space" = "page-down"
+"backspace" = "page-up"
+```
+
+Then verify:
+
+- `leaf --show-keymap-actions viewer` lists the effective keys without ANSI styling
+- the `CONFIGURED` column is `yes` for quit, page-down, and page-up
+- the help popup and status bar show the configured keys
+- `Space` and `Backspace` navigate pages in the viewer
+- `Esc` still cancels search and closes popups before it quits the viewer
+
+Remove the temporary overrides when the check is complete.
+
 ### Watch Mode
 
 While running `leaf --watch TESTING.md`:

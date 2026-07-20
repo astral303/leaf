@@ -17,6 +17,26 @@ extras = ["txt", "csv"]
 }
 
 #[test]
+fn parse_and_resolve_viewer_keymap() {
+    let toml = r#"
+[keymap.viewer]
+esc = "quit"
+space = "page-down"
+backspace = "page-up"
+"#;
+    let config: LeafConfig = toml::from_str(toml).unwrap();
+    let keymap = crate::config::resolve_viewer_keymap(&config).unwrap();
+
+    assert_eq!(
+        keymap.action_for(&crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::empty(),
+        )),
+        Some(crate::keymap::viewer::ViewerAction::Quit)
+    );
+}
+
+#[test]
 fn parse_partial_config_theme_only() {
     let toml = r#"theme = "arctic""#;
     let config: LeafConfig = toml::from_str(toml).unwrap();

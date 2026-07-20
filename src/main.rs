@@ -10,6 +10,7 @@ mod completions;
 mod config;
 mod editor;
 mod inline;
+mod keymap;
 mod markdown;
 mod render;
 mod runtime;
@@ -178,6 +179,12 @@ fn main() -> Result<()> {
         completions::run_auto_complete(ac_arg)?;
         return Ok(());
     }
+    if options.show_keymap_actions.is_some() {
+        let (config, _) = config::load_config(&config::CliOverrides::default());
+        let keymap = config::resolve_viewer_keymap(&config)?;
+        keymap::viewer::print_catalog(&keymap, options.include_hidden_keymap_actions);
+        return Ok(());
+    }
     let CliOptions {
         picker,
         watch: watch_from_cli,
@@ -195,6 +202,7 @@ fn main() -> Result<()> {
         theme: cli_theme.clone(),
     };
     let (user_config, mut config_warning) = config::load_config(&overrides);
+    let viewer_keymap = config::resolve_viewer_keymap(&user_config)?;
 
     let theme_selection = if let Some(theme_name) = cli_theme.as_deref() {
         resolve_theme_selection(theme_name, &user_config.themes, None)
@@ -402,6 +410,7 @@ fn main() -> Result<()> {
     app.set_file_mode(file_mode);
     app.set_editor_config(Some(resolved_editor));
     app.set_code_line_numbers(code_line_numbers);
+    app.set_viewer_keymap(viewer_keymap);
     app.set_config_warning(config_warning);
     if let Some(dir) = dir_arg {
         app.set_dir_arg(dir);

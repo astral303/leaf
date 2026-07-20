@@ -124,3 +124,17 @@ fn auto_complete_rejects_with_theme() {
     ];
     assert!(parse_cli(&args).is_err());
 }
+
+#[test]
+fn completion_scripts_include_keymap_catalog_options() {
+    for script in [
+        include_str!("../../completions/leaf.bash"),
+        include_str!("../../completions/leaf.zsh"),
+        include_str!("../../completions/leaf.fish"),
+        include_str!("../../completions/leaf.ps1"),
+    ] {
+        assert!(script.contains("show-keymap-actions"));
+        assert!(script.contains("include-hidden-keymap-actions"));
+        assert!(script.contains("viewer"));
+    }
+}

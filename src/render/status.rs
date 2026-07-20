@@ -175,15 +175,37 @@ pub(crate) fn status_goto_line_section(app: &App) -> Option<Vec<Span<'static>>> 
     Some(vec![span])
 }
 
-pub(crate) fn status_hint_segments(app: &App) -> &'static [&'static str] {
+pub(crate) fn status_hint_segments(app: &App) -> Vec<String> {
+    use crate::keymap::viewer::{key_label, ViewerAction::*};
+
     if app.is_goto_line_mode() || app.is_search_mode() {
-        &["enter confirm", "esc cancel"]
+        vec!["enter confirm".to_string(), "esc cancel".to_string()]
     } else if app.has_active_goto_line() {
-        &["esc cancel"]
+        vec!["esc cancel".to_string()]
     } else if app.has_active_search() {
-        &["n/N next/prev", "esc cancel"]
+        vec![
+            format!(
+                "{} next/prev",
+                key_label(app.viewer_keymap(), &[NextMatch, PreviousMatch], 12)
+            ),
+            "esc cancel".to_string(),
+        ]
     } else {
-        &["ctrl+e edit", "ctrl+f find", "t toc", "? help", "q quit"]
+        [
+            (&[OpenInEditor][..], "edit"),
+            (&[StartSearch][..], "find"),
+            (&[ToggleToc][..], "toc"),
+            (&[OpenHelp][..], "help"),
+            (&[Quit][..], "quit"),
+        ]
+        .into_iter()
+        .map(|(actions, description)| {
+            format!(
+                "{} {description}",
+                key_label(app.viewer_keymap(), actions, 9)
+            )
+        })
+        .collect()
     }
 }
 
@@ -191,10 +213,10 @@ pub(crate) fn status_shortcuts_section(app: &App, bar_bg: Color) -> Vec<Span<'st
     let theme = app_theme();
     let separator = Span::styled(" · ", status_separator_style(bar_bg));
     let sections = status_hint_segments(app)
-        .iter()
+        .into_iter()
         .map(|segment| {
             vec![Span::styled(
-                *segment,
+                segment,
                 Style::default().fg(theme.ui.status_shortcut_fg).bg(bar_bg),
             )]
         })

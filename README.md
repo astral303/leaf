@@ -157,7 +157,7 @@ Once added, use `\md` to open a live preview. To switch focus back to the Markdo
 
 ## Configuration
 
-Set default values for **theme**, **editor**, **watch** mode and **extra** file types via `config.toml`:
+Set default values for **theme**, **editor**, **watch** mode, **extra** file types, and viewer keybindings via `config.toml`:
 
 ```bash
 leaf --config
@@ -173,6 +173,10 @@ width = 80                # maximum content width (min: 20, default: terminal wi
 extras = ["txt", "rs"]    # extra file types shown in the picker
 code-line-numbers = true  # show line numbers inside fenced code blocks
 tab-title-length = -1     # terminal tab title truncation (min: 20, -1: no truncation)
+
+[keymap.viewer]
+"esc" = "quit"
+"space" = "page-down"
 ```
 
 To reset the configuration to defaults:
@@ -252,6 +256,8 @@ See [`gruvbox.toml`](gruvbox.toml) for a complete example with all available col
 
 ## Keybindings
 
+The help popup and status bar show the effective viewer keybindings. The built-in defaults are:
+
 | Key | Action | Key | Action |
 |---|---|---|---|
 | `j` / `↓` | Scroll down | `?` | Show help popup |
@@ -269,6 +275,27 @@ See [`gruvbox.toml`](gruvbox.toml) for a complete example with all available col
 | `w` | Toggle watch mode | `Double-Click` (code) | Copy code block |
 | `r` | Force reload (watch mode) | `Shift+Drag` | Select text |
 | `q` | Quit | `Option+Drag` | Select text (iTerm2) |
+
+Override only the keys you want to change:
+
+```toml
+[keymap.viewer]
+"esc" = "quit"
+"space" = "page-down"
+"backspace" = "page-up"
+"q" = "none"
+```
+
+Each configured key replaces its built-in binding. Use `"none"` to remove a binding. Modifiers are exact and support `ctrl`, `alt` (`Option` on macOS), and `shift`. Every action must keep at least one binding.
+
+Show the complete effective keymap without opening the TUI:
+
+```bash
+leaf --show-keymap-actions viewer
+leaf --show-keymap-actions viewer --include-hidden-keymap-actions
+```
+
+The output lists each key, action, description, and whether that action was affected by `config.toml`. See [`config.toml`](config.toml) for more examples.
 
 ## Features
 

@@ -21,6 +21,8 @@ pub(crate) struct CliOptions {
     pub(crate) update: bool,
     pub(crate) config: Option<ConfigAction>,
     pub(crate) auto_complete: Option<AutoCompleteArg>,
+    pub(crate) show_keymap_actions: Option<String>,
+    pub(crate) include_hidden_keymap_actions: bool,
     pub(crate) debug_input: bool,
     pub(crate) print_help: bool,
     pub(crate) print_version: bool,
@@ -48,7 +50,11 @@ pub(crate) fn usage_text() -> &'static str {
      \x20     --picker                 Open the file browser picker\n\
      \x20     --config [reset]         Open or reset configuration file\n\
      \x20     --update                 Update leaf to the latest version\n\
-     \x20     --auto-complete [SPEC]   Install or dump shell completions [bash|zsh|fish|powershell][:dump]"
+     \x20     --auto-complete [SPEC]   Install or dump shell completions [bash|zsh|fish|powershell][:dump]\n\
+     \n\
+     Keymap inspection:\n\
+     \x20     --show-keymap-actions <MAP>  Show effective bindings and actions [viewer]\n\
+     \x20     --include-hidden-keymap-actions  Include internal actions in keymap output"
 }
 
 pub(crate) fn version_text() -> &'static str {
@@ -105,6 +111,17 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
                 };
                 options.auto_complete = Some(ac_arg);
             }
+            "--show-keymap-actions" => {
+                let Some(value) = iter.next() else {
+                    anyhow::bail!("Missing value for --show-keymap-actions");
+                };
+                options.show_keymap_actions = Some(parse_keymap_name(value)?);
+            }
+            _ if arg.starts_with("--show-keymap-actions=") => {
+                let value = &arg["--show-keymap-actions=".len()..];
+                options.show_keymap_actions = Some(parse_keymap_name(value)?);
+            }
+            "--include-hidden-keymap-actions" => options.include_hidden_keymap_actions = true,
             "--debug-input" => options.debug_input = true,
             "--help" | "-h" => options.print_help = true,
             "--version" | "-V" => options.print_version = true,
@@ -165,6 +182,10 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
         (options.update, "--update"),
         (options.config.is_some(), "--config"),
         (options.auto_complete.is_some(), "--auto-complete"),
+        (
+            options.show_keymap_actions.is_some(),
+            "--show-keymap-actions",
+        ),
     ];
     let standalone_count = standalone.iter().filter(|(set, _)| *set).count();
     for &(set, name) in &standalone {
@@ -177,10 +198,16 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
             || options.debug_input
             || options.file_arg.is_some()
             || options.theme.is_some()
-            || options.editor.is_some();
+            || options.editor.is_some()
+            || options.inline.is_some()
+            || options.width.is_some();
         if has_other {
             anyhow::bail!("{name} must be used on its own");
         }
+    }
+
+    if options.include_hidden_keymap_actions && options.show_keymap_actions.is_none() {
+        anyhow::bail!("--include-hidden-keymap-actions requires --show-keymap-actions");
     }
 
     if options.inline.is_some() {
@@ -193,6 +220,14 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
     }
 
     Ok(options)
+}
+
+fn parse_keymap_name(value: &str) -> Result<String> {
+    if value == "viewer" {
+        Ok(value.to_string())
+    } else {
+        bail!("Unknown keymap: '{value}'. Expected: viewer")
+    }
 }
 
 fn parse_theme_name(name: &str) -> Result<String> {
