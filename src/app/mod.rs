@@ -170,6 +170,7 @@ pub(crate) struct App {
     pub(super) code_line_numbers: bool,
     max_width: Option<usize>,
     tab_title_max_filename_len: Option<usize>,
+    tab_title_length: Option<i32>,
     mouse_capture: bool,
     viewer_keymap: ViewerKeymap,
 }
@@ -330,6 +331,7 @@ impl App {
             code_line_numbers: true,
             max_width: None,
             tab_title_max_filename_len: None,
+            tab_title_length: None,
             mouse_capture: true,
             viewer_keymap: default_keymap(),
         };
@@ -360,6 +362,14 @@ impl App {
 
     pub(crate) fn tab_title_max_filename_len(&self) -> Option<usize> {
         self.tab_title_max_filename_len
+    }
+
+    pub(crate) fn set_tab_title_length(&mut self, value: Option<i32>) {
+        self.tab_title_length = value;
+    }
+
+    pub(crate) fn tab_title_length(&self) -> Option<i32> {
+        self.tab_title_length
     }
 
     pub(crate) fn is_mouse_capture_enabled(&self) -> bool {

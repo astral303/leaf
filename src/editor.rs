@@ -4,6 +4,12 @@ use std::process::{Command, Stdio};
 const EDITOR_LINE_PLACEHOLDER: &str = "{$line}";
 const EDITOR_PATH_PLACEHOLDER: &str = "{$path}";
 
+const EDITOR_TAB_PREFIX: &str = "leaf editor: ";
+
+fn escape_applescript_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 pub(crate) fn expand_editor_placeholders(editor_cmd: &str, line: usize, path: &Path) -> String {
     editor_cmd
         .replace(EDITOR_LINE_PLACEHOLDER, &line.to_string())
@@ -272,13 +278,71 @@ fn platform_fallback_editor() -> &'static str {
     }
 }
 
+fn is_wsl() -> bool {
+    static CACHED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        if std::env::var("WSL_DISTRO_NAME")
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .map(|s| s.to_lowercase().contains("microsoft"))
+            .unwrap_or(false)
+    })
+}
+
+pub(crate) enum LaunchStrategy {
+    SpawnAndAssume(Command),
+    RunAndCheck(Command),
+}
+
+fn silence(cmd: &mut Command) {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+}
+
+impl LaunchStrategy {
+    fn run(self) -> bool {
+        match self {
+            LaunchStrategy::SpawnAndAssume(mut cmd) => {
+                silence(&mut cmd);
+                cmd.spawn().is_ok()
+            }
+            LaunchStrategy::RunAndCheck(mut cmd) => {
+                silence(&mut cmd);
+                cmd.status().map(|s| s.success()).unwrap_or(false)
+            }
+        }
+    }
+}
+
+pub(crate) fn format_editor_tab_title(file: &Path, tab_title_length: Option<i32>) -> String {
+    let name = file
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| file.display().to_string());
+    let max_filename_len = tab_title_length
+        .and_then(|n| crate::max_filename_len_for_prefix(n, EDITOR_TAB_PREFIX.len()));
+    let display = match max_filename_len {
+        Some(m) => crate::terminal::format_tab_title_filename(&name, m),
+        None => name,
+    };
+    format!("{EDITOR_TAB_PREFIX}{display}")
+}
+
 pub(crate) fn try_new_tab_command(
     editor: &str,
     file: &Path,
     emulator: &TerminalEmulator,
-) -> Option<Command> {
+    wsl: bool,
+    tab_title_length: Option<i32>,
+) -> Option<LaunchStrategy> {
     let (bin, args) = split_editor_cmd(editor);
     let file_str = file.display().to_string();
+    let title = format_editor_tab_title(file, tab_title_length);
 
     match emulator {
         TerminalEmulator::Kitty => {
@@ -286,25 +350,25 @@ pub(crate) fn try_new_tab_command(
             cmd.arg("@")
                 .arg("launch")
                 .arg("--type=tab")
-                .arg("--tab-title=leaf editor")
+                .arg(format!("--tab-title={title}"))
                 .arg(bin);
             for a in &args {
                 cmd.arg(a);
             }
             cmd.arg(&file_str);
-            Some(cmd)
+            Some(LaunchStrategy::RunAndCheck(cmd))
         }
         TerminalEmulator::GnomeTerminal => {
             let mut cmd = Command::new("gnome-terminal");
             cmd.arg("--tab")
-                .arg("--title=leaf editor")
+                .arg(format!("--title={title}"))
                 .arg("--")
                 .arg(bin);
             for a in &args {
                 cmd.arg(a);
             }
             cmd.arg(&file_str);
-            Some(cmd)
+            Some(LaunchStrategy::SpawnAndAssume(cmd))
         }
         TerminalEmulator::MacTerminal(ref tp) => {
             let app_name = if tp == "Apple_Terminal" {
@@ -312,10 +376,12 @@ pub(crate) fn try_new_tab_command(
             } else {
                 "iTerm"
             };
-            let escaped_editor = editor.replace('\\', "\\\\").replace('"', "\\\"");
-            let escaped_file = file_str.replace('\\', "\\\\").replace('"', "\\\"");
+            let escaped_editor = escape_applescript_string(editor);
+            let escaped_file = escape_applescript_string(&file_str);
             let script = if tp == "Apple_Terminal" {
-                let title_seq = r#"printf '\\033]0;leaf editor\\007'; "#;
+                let shell_title = title.replace('\'', "'\\''");
+                let escaped_title = escape_applescript_string(&shell_title);
+                let title_seq = format!(r#"printf '\\033]0;{escaped_title}\\007'; "#);
                 format!(
                     "tell application \"{app_name}\" to do script \"{title_seq}{escaped_editor} {escaped_file}\""
                 )
@@ -327,19 +393,22 @@ pub(crate) fn try_new_tab_command(
             };
             let mut cmd = Command::new("osascript");
             cmd.arg("-e").arg(script);
-            Some(cmd)
+            Some(LaunchStrategy::SpawnAndAssume(cmd))
         }
         TerminalEmulator::WindowsTerminal => {
+            let is_windows_bin = Path::new(bin)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("exe"));
+            if wsl && !is_windows_bin {
+                return None;
+            }
             let mut cmd = Command::new("wt");
-            cmd.arg("new-tab")
-                .arg("--title")
-                .arg("leaf editor")
-                .arg(bin);
+            cmd.arg("new-tab").arg("--title").arg(&title).arg(bin);
             for a in &args {
                 cmd.arg(a);
             }
             cmd.arg(&file_str);
-            Some(cmd)
+            Some(LaunchStrategy::SpawnAndAssume(cmd))
         }
         TerminalEmulator::Termux | TerminalEmulator::Unknown => None,
     }
@@ -356,29 +425,24 @@ pub(crate) fn open_in_editor(
     file: &Path,
     kind: EditorKind,
     emulator: &TerminalEmulator,
+    tab_title_length: Option<i32>,
 ) -> Result<EditorResult, String> {
     let (bin, args) = split_editor_cmd(editor);
     match kind {
         EditorKind::Gui => {
             let exec = which(bin).unwrap_or_else(|| PathBuf::from(bin));
-            Command::new(&exec)
-                .args(&args)
-                .arg(file)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .map_err(|e| format!("{bin}: {e}"))?;
+            let mut cmd = Command::new(&exec);
+            cmd.args(&args).arg(file);
+            silence(&mut cmd);
+            cmd.spawn().map_err(|e| format!("{bin}: {e}"))?;
             Ok(EditorResult::Opened)
         }
         EditorKind::Terminal => {
-            if let Some(mut cmd) = try_new_tab_command(editor, file, emulator) {
-                cmd.stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null());
-                if cmd.spawn().is_ok() {
-                    return Ok(EditorResult::Opened);
-                }
+            if try_new_tab_command(editor, file, emulator, is_wsl(), tab_title_length)
+                .map(LaunchStrategy::run)
+                .unwrap_or(false)
+            {
+                return Ok(EditorResult::Opened);
             }
             Ok(EditorResult::NeedsSameTerminal)
         }
