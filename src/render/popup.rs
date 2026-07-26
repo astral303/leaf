@@ -98,6 +98,19 @@ pub(super) fn popup_footer_line(segments: &[&'static str], bg: Color) -> Line<'s
     Line::from(spans)
 }
 
+fn wrap_help_rows(rows: Vec<HelpRow>, continuation_width: usize) -> Vec<HelpLine> {
+    rows.into_iter()
+        .flat_map(|row| {
+            wrap_help_row(
+                row,
+                HELP_KEY_WRAP_WIDTH,
+                continuation_width,
+                HELP_CONTINUATION_INDENT,
+            )
+        })
+        .collect()
+}
+
 pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
     let theme = app_theme();
     let select_hint =
@@ -115,30 +128,8 @@ pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
         .add_modifier(Modifier::BOLD);
 
     use ViewerAction::*;
-    let wrap_left = |rows: Vec<HelpRow>| {
-        rows.into_iter()
-            .flat_map(|row| {
-                wrap_help_row(
-                    row,
-                    HELP_KEY_WRAP_WIDTH,
-                    HELP_LEFT_SECTION_WIDTH,
-                    HELP_CONTINUATION_INDENT,
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-    let wrap_right = |rows: Vec<HelpRow>| {
-        rows.into_iter()
-            .flat_map(|row| {
-                wrap_help_row(
-                    row,
-                    HELP_KEY_WRAP_WIDTH,
-                    HELP_RIGHT_SECTION_WIDTH,
-                    HELP_CONTINUATION_INDENT,
-                )
-            })
-            .collect::<Vec<_>>()
-    };
+    let wrap_left = |rows| wrap_help_rows(rows, HELP_LEFT_SECTION_WIDTH);
+    let wrap_right = |rows| wrap_help_rows(rows, HELP_RIGHT_SECTION_WIDTH);
     let static_help = |keys: &str, description: &'static str| {
         vec![HelpLine {
             keys: keys.to_string(),

@@ -330,19 +330,22 @@ fn pair_bindings(
         groups.push(pair_label(&first_binding.key, &second[second_index].key));
     }
 
-    let first_leftovers = first
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| !first_used[*index])
-        .map(|(_, binding)| *binding)
-        .collect();
-    let second_leftovers = second
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| !second_used[*index])
-        .map(|(_, binding)| *binding)
-        .collect();
+    let first_leftovers = unpaired_bindings(first, &first_used);
+    let second_leftovers = unpaired_bindings(second, &second_used);
     (groups, first_leftovers, second_leftovers)
+}
+
+fn unpaired_bindings(
+    bindings: &[IndexedHelpBinding],
+    is_paired: &[bool],
+) -> Vec<IndexedHelpBinding> {
+    debug_assert_eq!(bindings.len(), is_paired.len());
+
+    bindings
+        .iter()
+        .zip(is_paired)
+        .filter_map(|(binding, &is_paired)| (!is_paired).then_some(*binding))
+        .collect()
 }
 
 fn earliest_default_pair(
