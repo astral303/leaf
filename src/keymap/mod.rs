@@ -269,8 +269,8 @@ struct CatalogRow {
     configured: bool,
 }
 
-impl KeymapCatalog<'_> {
-    pub(crate) fn name(&self) -> &str {
+impl<'a> KeymapCatalog<'a> {
+    pub(crate) fn name(&self) -> &'a str {
         self.name
     }
 
@@ -364,15 +364,19 @@ impl Keymaps {
         &self.viewer
     }
 
+    #[cfg(test)]
+    pub(crate) fn registered_names(&self) -> impl Iterator<Item = &str> {
+        self.catalogs(false)
+            .into_iter()
+            .map(|catalog| catalog.name())
+    }
+
     pub(crate) fn catalog(
         &self,
         name: &str,
         include_hidden: bool,
     ) -> Result<KeymapCatalog<'_>, String> {
-        let catalogs = [
-            self.global.catalog(include_hidden),
-            self.viewer.catalog(include_hidden),
-        ];
+        let catalogs = self.catalogs(include_hidden);
         let expected = catalogs
             .iter()
             .map(KeymapCatalog::name)
@@ -382,5 +386,12 @@ impl Keymaps {
             .into_iter()
             .find(|catalog| catalog.name() == name)
             .ok_or_else(|| format!("Unknown keymap: '{name}'. Expected: {expected}"))
+    }
+
+    fn catalogs(&self, include_hidden: bool) -> [KeymapCatalog<'_>; 2] {
+        [
+            self.global.catalog(include_hidden),
+            self.viewer.catalog(include_hidden),
+        ]
     }
 }

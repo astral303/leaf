@@ -1,4 +1,5 @@
 use crate::cli::{parse_cli, AutoCompleteArg};
+use crate::keymap::Keymaps;
 
 #[test]
 fn parse_cli_accepts_auto_complete() {
@@ -127,14 +128,49 @@ fn auto_complete_rejects_with_theme() {
 
 #[test]
 fn completion_scripts_include_keymap_catalog_options() {
-    for script in [
-        include_str!("../../completions/leaf.bash"),
-        include_str!("../../completions/leaf.zsh"),
-        include_str!("../../completions/leaf.fish"),
-        include_str!("../../completions/leaf.ps1"),
-    ] {
-        assert!(script.contains("show-keymap-actions"));
-        assert!(script.contains("include-hidden-keymap-actions"));
-        assert!(script.contains("viewer"));
+    let keymaps = Keymaps::defaults();
+    let keymap_names = keymaps.registered_names().collect::<Vec<_>>();
+    let space_separated_names = keymap_names.join(" ");
+    let single_quoted_names = keymap_names
+        .iter()
+        .map(|name| format!("'{name}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let scripts = [
+        (
+            "Bash",
+            include_str!("../../completions/leaf.bash"),
+            format!("compgen -W \"{space_separated_names}\""),
+        ),
+        (
+            "Zsh",
+            include_str!("../../completions/leaf.zsh"),
+            format!(":keymap:({space_separated_names})"),
+        ),
+        (
+            "Fish",
+            include_str!("../../completions/leaf.fish"),
+            format!("-l show-keymap-actions -x -a \"{space_separated_names}\""),
+        ),
+        (
+            "PowerShell",
+            include_str!("../../completions/leaf.ps1"),
+            format!("@({single_quoted_names})"),
+        ),
+    ];
+
+    for (shell, script, expected_catalog_values) in scripts {
+        assert!(
+            script.contains("show-keymap-actions"),
+            "{shell} omits --show-keymap-actions"
+        );
+        assert!(
+            script.contains("include-hidden-keymap-actions"),
+            "{shell} omits --include-hidden-keymap-actions"
+        );
+        assert!(
+            script.contains(&expected_catalog_values),
+            "{shell} catalog values differ from the registered keymaps: {expected_catalog_values}"
+        );
     }
 }

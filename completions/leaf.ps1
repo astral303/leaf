@@ -49,7 +49,7 @@ $global:LeafCompleter = {
             return
         }
         '--show-keymap-actions' {
-            @('viewer') |
+            @('global', 'viewer') |
                 Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
                 }
