@@ -187,6 +187,12 @@ pub(crate) fn wrap_help_row(
     let continuation_content_width = continuation_line_width.saturating_sub(continuation_indent);
     for part in row.parts {
         let text = format!("{}{}", part.text, part.separator_after);
+        if should_wrap_after_part(&current, &text, width) {
+            current.push_str(text.trim_end());
+            key_lines.push(std::mem::take(&mut current));
+            width = continuation_content_width;
+            continue;
+        }
         if !current.is_empty() && current.chars().count() + text.chars().count() > width {
             key_lines.push(current.trim_end().to_string());
             current.clear();
@@ -229,6 +235,18 @@ pub(crate) fn wrap_help_row(
             description: if index == 0 { row.description } else { "" },
         })
         .collect()
+}
+
+fn should_wrap_after_part(current: &str, part: &str, width: usize) -> bool {
+    let part_at_line_end = part.trim_end();
+    if part_at_line_end == part {
+        return false;
+    }
+
+    let current_width = current.chars().count();
+    let inline_width = current_width + part.chars().count();
+    let line_end_width = current_width + part_at_line_end.chars().count();
+    inline_width > width && line_end_width <= width
 }
 
 fn split_overlong_help_part(text: &str, width: usize) -> Vec<String> {

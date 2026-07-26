@@ -549,6 +549,27 @@ fn wrapped_help_keeps_the_separator_without_adding_a_blank_line() {
 }
 
 #[test]
+fn trailing_separator_space_does_not_force_an_early_wrap() {
+    let overrides = BTreeMap::from([
+        ("backspace".to_string(), "page-up".to_string()),
+        ("space".to_string(), "page-down".to_string()),
+        ("x".to_string(), "page-up".to_string()),
+        ("y".to_string(), "page-down".to_string()),
+    ]);
+    let keymap = viewer::resolve(&overrides).unwrap();
+    let row =
+        format_paired_help(&keymap, &[(ViewerAction::PageUp, ViewerAction::PageDown)]).remove(0);
+
+    assert_eq!(
+        wrap_help_row(row, 13, 25, 2),
+        vec![
+            help_line("u/d, bsp/spc,", "page up/down"),
+            help_line("  x/y", ""),
+        ]
+    );
+}
+
+#[test]
 fn overlong_single_chord_moves_intact_to_a_continuation_line() {
     let overrides = BTreeMap::from([
         ("ctrl+shift+b".to_string(), "scroll-down".to_string()),
