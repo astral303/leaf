@@ -295,13 +295,18 @@ fn help_line(keys: &str, description: &'static str) -> HelpLine {
     }
 }
 
-fn render_help_popup(viewer_overrides: &BTreeMap<String, String>) -> Vec<String> {
+fn app_with_viewer_overrides(source: &str, viewer_overrides: &BTreeMap<String, String>) -> App {
     let keymaps = Keymaps::resolve(&BTreeMap::new(), viewer_overrides).unwrap();
     let (ss, theme) = super::test_assets();
     let (lines, toc, _, _) =
-        parse_markdown("body", &ss, &theme, &super::test_md_theme(), false, true).into();
+        parse_markdown(source, &ss, &theme, &super::test_md_theme(), false, true).into();
     let mut app = App::new(lines, toc, "test".to_string(), false, false, None, None);
     app.set_keymaps(keymaps);
+    app
+}
+
+fn render_help_popup(viewer_overrides: &BTreeMap<String, String>) -> Vec<String> {
+    let mut app = app_with_viewer_overrides("body", viewer_overrides);
     app.open_help();
 
     let backend = TestBackend::new(90, 40);
@@ -462,7 +467,7 @@ fn jump_range_prefers_a_prefix_with_matching_modifiers() {
 }
 
 #[test]
-fn explicit_slash_binding_uses_a_safe_separator() {
+fn explicitly_configured_synonym_surfaces_in_help_and_status() {
     let overrides = BTreeMap::from([("/".to_string(), "start-search".to_string())]);
     let keymap = viewer::resolve(&overrides).unwrap();
 
@@ -470,6 +475,7 @@ fn explicit_slash_binding_uses_a_safe_separator() {
         format_action_help(&keymap, ViewerAction::StartSearch).key_label(),
         "ctrl+f, /"
     );
+    assert_eq!(status_hints(&overrides)[1], "ctrl+f, / find");
 }
 
 #[test]
@@ -532,24 +538,98 @@ fn wrapped_help_keeps_the_separator_without_adding_a_blank_line() {
     );
 }
 
+fn status_hints(viewer_overrides: &BTreeMap<String, String>) -> Vec<String> {
+    let app = app_with_viewer_overrides("body", viewer_overrides);
+    crate::render::status_hint_segments(&app)
+}
+
+fn active_search_status_hints(viewer_overrides: &BTreeMap<String, String>) -> Vec<String> {
+    let mut app = app_with_viewer_overrides("body", viewer_overrides);
+    app.set_search_query("body");
+    crate::render::status_hint_segments(&app)
+}
+
 #[test]
-fn status_hints_use_effective_viewer_bindings() {
+fn default_status_hints_match_upstream() {
+    assert_eq!(
+        status_hints(&BTreeMap::new()),
+        vec!["ctrl+e edit", "ctrl+f find", "t toc", "? help", "q quit"]
+    );
+}
+
+#[test]
+fn configured_status_hints_use_effective_viewer_bindings() {
     let overrides = BTreeMap::from([
+        ("backspace".to_string(), "page-up".to_string()),
         ("ctrl+c".to_string(), "none".to_string()),
         ("esc".to_string(), "quit".to_string()),
         ("q".to_string(), "none".to_string()),
         ("shift+q".to_string(), "none".to_string()),
         ("space".to_string(), "page-down".to_string()),
     ]);
-    let keymaps = Keymaps::resolve(&BTreeMap::new(), &overrides).unwrap();
-    let (ss, theme) = super::test_assets();
-    let (lines, toc, _, _) =
-        parse_markdown("body", &ss, &theme, &super::test_md_theme(), false, true).into();
-    let mut app = App::new(lines, toc, "test".to_string(), false, false, None, None);
-    app.set_keymaps(keymaps);
 
     assert_eq!(
-        crate::render::status_hint_segments(&app),
+        status_hints(&overrides),
         vec!["ctrl+e edit", "ctrl+f find", "t toc", "? help", "esc quit",]
+    );
+}
+
+#[test]
+fn hostile_status_key_label_is_capped() {
+    let overrides = BTreeMap::from([
+        ("/".to_string(), "none".to_string()),
+        ("ctrl+f".to_string(), "none".to_string()),
+        ("ctrl+shift+f".to_string(), "start-search".to_string()),
+    ]);
+
+    assert_eq!(
+        status_hints(&overrides),
+        vec!["ctrl+e edit", "ctrl+shi… find", "t toc", "? help", "q quit"]
+    );
+}
+
+#[test]
+fn status_key_label_cap_has_pinned_boundaries() {
+    for (configured_key, expected_hint) in [
+        ("shift+esc", "shift+esc find"),
+        ("shift+home", "shift+ho… find"),
+    ] {
+        let overrides = BTreeMap::from([
+            ("/".to_string(), "none".to_string()),
+            ("ctrl+f".to_string(), "none".to_string()),
+            (configured_key.to_string(), "start-search".to_string()),
+        ]);
+
+        assert_eq!(status_hints(&overrides)[1], expected_hint);
+    }
+}
+
+#[test]
+fn active_search_status_includes_unpaired_next_and_previous_keys() {
+    let overrides = BTreeMap::from([
+        ("ctrl+f2".to_string(), "previous-match".to_string()),
+        ("f1".to_string(), "next-match".to_string()),
+        ("n".to_string(), "none".to_string()),
+        ("shift+n".to_string(), "none".to_string()),
+    ]);
+
+    assert_eq!(
+        active_search_status_hints(&overrides),
+        vec!["f1/ctrl+f2 next/prev", "esc cancel"]
+    );
+}
+
+#[test]
+fn active_search_status_preserves_its_twelve_character_budget() {
+    let overrides = BTreeMap::from([
+        ("ctrl+shift+f1".to_string(), "next-match".to_string()),
+        ("f2".to_string(), "previous-match".to_string()),
+        ("n".to_string(), "none".to_string()),
+        ("shift+n".to_string(), "none".to_string()),
+    ]);
+
+    assert_eq!(
+        active_search_status_hints(&overrides),
+        vec!["ctrl+shift+… next/prev", "esc cancel"]
     );
 }
