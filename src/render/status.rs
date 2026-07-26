@@ -7,6 +7,9 @@ use ratatui::{
     text::Span,
 };
 
+const STATUS_HINT_KEY_BUDGET: usize = 9;
+const ACTIVE_SEARCH_KEY_BUDGET: usize = 12;
+
 pub(crate) fn status_bar_bg() -> Color {
     app_theme().ui.status_bg
 }
@@ -176,37 +179,56 @@ pub(crate) fn status_goto_line_section(app: &App) -> Option<Vec<Span<'static>>> 
 }
 
 pub(crate) fn status_hint_segments(app: &App) -> Vec<String> {
-    use crate::keymap::viewer::{key_label, ViewerAction::*};
+    use crate::keymap::{format_action_help, format_paired_help, viewer::ViewerAction::*};
 
     if app.is_goto_line_mode() || app.is_search_mode() {
         vec!["enter confirm".to_string(), "esc cancel".to_string()]
     } else if app.has_active_goto_line() {
         vec!["esc cancel".to_string()]
     } else if app.has_active_search() {
-        vec![
-            format!(
-                "{} next/prev",
-                key_label(app.viewer_keymap(), &[NextMatch, PreviousMatch], 12)
-            ),
-            "esc cancel".to_string(),
-        ]
+        let rows = format_paired_help(app.viewer_keymap(), &[(NextMatch, PreviousMatch)]);
+        assert!(
+            !rows.is_empty(),
+            "bound next/previous actions must produce a status label"
+        );
+        let label = rows
+            .iter()
+            .map(|row| row.key_label())
+            .collect::<Vec<_>>()
+            .join("/");
+        let label = capped_key_label(label, ACTIVE_SEARCH_KEY_BUDGET);
+        vec![format!("{label} next/prev"), "esc cancel".to_string()]
     } else {
         [
-            (&[OpenInEditor][..], "edit"),
-            (&[StartSearch][..], "find"),
-            (&[ToggleToc][..], "toc"),
-            (&[OpenHelp][..], "help"),
-            (&[Quit][..], "quit"),
+            (OpenInEditor, "edit"),
+            (StartSearch, "find"),
+            (ToggleToc, "toc"),
+            (OpenHelp, "help"),
+            (Quit, "quit"),
         ]
         .into_iter()
-        .map(|(actions, description)| {
+        .map(|(action, description)| {
+            let label = format_action_help(app.viewer_keymap(), action).key_label();
             format!(
                 "{} {description}",
-                key_label(app.viewer_keymap(), actions, 9)
+                capped_key_label(label, STATUS_HINT_KEY_BUDGET)
             )
         })
         .collect()
     }
+}
+
+fn capped_key_label(label: String, max_chars: usize) -> String {
+    if label.chars().count() <= max_chars {
+        return label;
+    }
+
+    let mut shortened = label
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
+    shortened.push('…');
+    shortened
 }
 
 pub(crate) fn status_shortcuts_section(app: &App, bar_bg: Color) -> Vec<Span<'static>> {

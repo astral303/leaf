@@ -62,11 +62,14 @@ Use these keys while viewing the fixture:
 - `/` to search for `tokyo-signal`
 - `n` and `N` to move through search matches
 
-### Viewer Keybindings
+### Keybindings
 
 Add a temporary override to your `config.toml`:
 
 ```toml
+[keymap.global]
+"f12" = "toggle-mouse-capture"
+
 [keymap.viewer]
 "esc" = "quit"
 "space" = "page-down"
@@ -75,11 +78,26 @@ Add a temporary override to your `config.toml`:
 
 Then verify:
 
+- `leaf --show-keymap-actions global` lists `f12` as configured
 - `leaf --show-keymap-actions viewer` lists the effective keys without ANSI styling
 - the `CONFIGURED` column is `yes` for quit, page-down, and page-up
 - the help popup and status bar show the configured keys
 - `Space` and `Backspace` navigate pages in the viewer
 - `Esc` still cancels search and closes popups before it quits the viewer
+- `F12` toggles mouse capture in the viewer, help, path popup, browser picker, and code-selection mode
+- `F12` does not toggle mouse capture while typing in search, go-to-line, or the fuzzy picker
+- `Ctrl+J` does not invoke plain `j`, and `Alt+Q` does not invoke plain `q`
+
+For the help overflow fallback, temporarily replace the `F12` override with:
+
+```toml
+[keymap.global]
+"ctrl+alt+shift+enter" = "toggle-mouse-capture"
+```
+
+Verify that the help popup keeps its normal width, leaves `capture` on the
+first row, and wraps the overlong chord at the final `+`. The right column
+must continue independently of the left column.
 
 Remove the temporary overrides when the check is complete.
 

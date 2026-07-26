@@ -53,7 +53,7 @@ pub(crate) fn usage_text() -> &'static str {
      \x20     --auto-complete [SPEC]   Install or dump shell completions [bash|zsh|fish|powershell][:dump]\n\
      \n\
      Keymap inspection:\n\
-     \x20     --show-keymap-actions <MAP>  Show effective bindings and actions [viewer]\n\
+     \x20     --show-keymap-actions <MAP>  Show effective bindings and actions [global|viewer]\n\
      \x20     --include-hidden-keymap-actions  Include internal actions in keymap output"
 }
 
@@ -199,8 +199,8 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
             || options.file_arg.is_some()
             || options.theme.is_some()
             || options.editor.is_some()
-            || options.inline.is_some()
-            || options.width.is_some();
+            || (name == "--show-keymap-actions"
+                && (options.inline.is_some() || options.width.is_some()));
         if has_other {
             anyhow::bail!("{name} must be used on its own");
         }
@@ -223,11 +223,11 @@ pub(crate) fn parse_cli(args: &[String]) -> Result<CliOptions> {
 }
 
 fn parse_keymap_name(value: &str) -> Result<String> {
-    if value == "viewer" {
-        Ok(value.to_string())
-    } else {
-        bail!("Unknown keymap: '{value}'. Expected: viewer")
+    let name = value.trim();
+    if name.is_empty() {
+        bail!("Missing value for --show-keymap-actions");
     }
+    Ok(name.to_string())
 }
 
 fn parse_theme_name(name: &str) -> Result<String> {

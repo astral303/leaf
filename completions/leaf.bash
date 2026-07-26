@@ -25,7 +25,7 @@ _leaf() {
             return
             ;;
         --show-keymap-actions)
-            COMPREPLY=($(compgen -W "viewer" -- "$cur"))
+            COMPREPLY=($(compgen -W "global viewer" -- "$cur"))
             return
             ;;
     esac

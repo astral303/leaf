@@ -1,5 +1,5 @@
 use crate::{
-    keymap::viewer::{default_keymap, ViewerKeymap},
+    keymap::{global::GlobalKeymap, viewer::ViewerKeymap, Keymaps},
     markdown::{
         build_searchable_lines,
         toc::{toc_levels, TocEntry},
@@ -172,7 +172,7 @@ pub(crate) struct App {
     tab_title_max_filename_len: Option<usize>,
     tab_title_length: Option<i32>,
     mouse_capture: bool,
-    viewer_keymap: ViewerKeymap,
+    keymaps: Keymaps,
 }
 
 impl App {
@@ -333,7 +333,7 @@ impl App {
             tab_title_max_filename_len: None,
             tab_title_length: None,
             mouse_capture: true,
-            viewer_keymap: default_keymap(),
+            keymaps: Keymaps::defaults(),
         };
         app.store_current_theme_preview();
         app.refresh_static_caches();
@@ -376,13 +376,23 @@ impl App {
         self.mouse_capture
     }
 
-    pub(crate) fn viewer_keymap(&self) -> &ViewerKeymap {
-        &self.viewer_keymap
+    pub(crate) fn global_keymap(&self) -> &GlobalKeymap {
+        self.keymaps.global()
     }
 
-    pub(crate) fn set_viewer_keymap(&mut self, keymap: ViewerKeymap) {
-        self.viewer_keymap = keymap;
+    pub(crate) fn viewer_keymap(&self) -> &ViewerKeymap {
+        self.keymaps.viewer()
+    }
+
+    pub(crate) fn set_keymaps(&mut self, keymaps: Keymaps) {
+        self.keymaps = keymaps;
         self.status_cache_key = None;
+    }
+
+    pub(crate) fn global_shortcuts_enabled(&self) -> bool {
+        !self.is_search_mode()
+            && !self.is_goto_line_mode()
+            && !(self.is_file_picker_open() && self.is_fuzzy_file_picker())
     }
 
     pub(crate) fn toggle_mouse_capture(&mut self) -> bool {

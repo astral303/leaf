@@ -19,7 +19,7 @@ _leaf() {
         '--config[Open or reset configuration file]::action:(reset)'
         '--update[Update leaf to the latest version]'
         '--auto-complete[Install or dump shell completions]::shell:(bash zsh fish powershell)'
-        '--show-keymap-actions[Show effective bindings and actions]:keymap:(viewer)'
+        '--show-keymap-actions[Show effective bindings and actions]:keymap:(global viewer)'
         '--include-hidden-keymap-actions[Include internal actions in keymap output]'
     )
 

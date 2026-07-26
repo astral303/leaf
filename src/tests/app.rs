@@ -1,9 +1,11 @@
-use super::{test_assets, test_md_theme};
+use super::{test_assets, test_md_theme, unique_temp_dir};
 use crate::app::{App, AppConfig, FileChange};
 use crate::cli::parse_cli;
+use crate::keymap::global::GlobalAction;
 use crate::markdown::{hash_str, parse_markdown, parse_markdown_with_width, read_file_state};
 use crate::*;
-use crossterm::event::KeyEventKind;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::Rect;
 use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
@@ -202,33 +204,32 @@ fn parse_cli_rejects_empty_theme_name() {
 }
 
 #[test]
-fn parse_cli_accepts_viewer_keymap_catalog_forms() {
-    for args in [
-        vec![
-            "leaf".to_string(),
-            "--show-keymap-actions".to_string(),
-            "viewer".to_string(),
-        ],
-        vec![
-            "leaf".to_string(),
-            "--show-keymap-actions=viewer".to_string(),
-            "--include-hidden-keymap-actions".to_string(),
-        ],
+fn parse_cli_accepts_registered_keymap_catalog_forms() {
+    for (args, expected_name) in [
+        (
+            vec![
+                "leaf".to_string(),
+                "--show-keymap-actions".to_string(),
+                "global".to_string(),
+            ],
+            "global",
+        ),
+        (
+            vec![
+                "leaf".to_string(),
+                "--show-keymap-actions=viewer".to_string(),
+                "--include-hidden-keymap-actions".to_string(),
+            ],
+            "viewer",
+        ),
     ] {
         let options = parse_cli(&args).unwrap();
-        assert_eq!(options.show_keymap_actions.as_deref(), Some("viewer"));
+        assert_eq!(options.show_keymap_actions.as_deref(), Some(expected_name));
     }
 }
 
 #[test]
 fn parse_cli_rejects_invalid_keymap_catalog_usage() {
-    let unknown = vec![
-        "leaf".to_string(),
-        "--show-keymap-actions".to_string(),
-        "browser".to_string(),
-    ];
-    assert!(parse_cli(&unknown).is_err());
-
     let hidden_alone = vec![
         "leaf".to_string(),
         "--include-hidden-keymap-actions".to_string(),
@@ -241,6 +242,161 @@ fn parse_cli_rejects_invalid_keymap_catalog_usage() {
         "README.md".to_string(),
     ];
     assert!(parse_cli(&with_file).is_err());
+
+    for incompatible in ["--inline", "--width=80"] {
+        let args = vec![
+            "leaf".to_string(),
+            "--show-keymap-actions=viewer".to_string(),
+            incompatible.to_string(),
+        ];
+        assert!(parse_cli(&args).is_err());
+    }
+
+    let empty = vec!["leaf".to_string(), "--show-keymap-actions=".to_string()];
+    assert!(parse_cli(&empty).is_err());
+}
+
+#[test]
+fn parse_cli_leaves_catalog_name_validation_to_the_catalog() {
+    let args = vec![
+        "leaf".to_string(),
+        "--show-keymap-actions".to_string(),
+        "browser".to_string(),
+    ];
+
+    let options = parse_cli(&args).unwrap();
+
+    assert_eq!(options.show_keymap_actions.as_deref(), Some("browser"));
+}
+
+#[test]
+fn legacy_standalone_commands_ignore_inline_and_width() {
+    for args in [
+        vec![
+            "leaf".to_string(),
+            "--update".to_string(),
+            "--inline".to_string(),
+        ],
+        vec![
+            "leaf".to_string(),
+            "--config".to_string(),
+            "--width=80".to_string(),
+        ],
+        vec![
+            "leaf".to_string(),
+            "--auto-complete".to_string(),
+            "bash".to_string(),
+            "--inline".to_string(),
+        ],
+    ] {
+        parse_cli(&args).unwrap();
+    }
+}
+
+#[test]
+fn keymap_catalog_reports_warnings_and_validates_registered_names() {
+    let config = LeafConfig::default();
+    let mut output = Vec::new();
+    let mut errors = Vec::new();
+
+    write_keymap_catalog(
+        &config,
+        Some("warning: using defaults"),
+        "global",
+        false,
+        &mut output,
+        &mut errors,
+    )
+    .unwrap();
+
+    let output = String::from_utf8(output).unwrap();
+    let errors = String::from_utf8(errors).unwrap();
+    assert!(output.contains("toggle-mouse-capture"));
+    assert!(!output.contains("\u{1b}["));
+    assert_eq!(errors, "warning: using defaults\n");
+
+    let error = write_keymap_catalog(
+        &config,
+        None,
+        "browser",
+        false,
+        &mut Vec::new(),
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("global, viewer"));
+}
+
+#[test]
+fn global_shortcuts_are_disabled_only_while_typing() {
+    let (ss, theme) = test_assets();
+    let (lines, toc, _, _) =
+        parse_markdown("body", &ss, &theme, &test_md_theme(), false, true).into();
+    let mut app = App::new(lines, toc, "test".to_string(), false, false, None, None);
+    assert!(app.global_shortcuts_enabled());
+
+    app.open_help();
+    assert!(app.global_shortcuts_enabled());
+    app.close_help();
+
+    app.begin_search();
+    assert!(!app.global_shortcuts_enabled());
+    app.cancel_search();
+
+    app.begin_goto_line();
+    assert!(!app.global_shortcuts_enabled());
+    app.clear_active_goto_line();
+
+    let root = unique_temp_dir("leaf-global-shortcut-context");
+    fs::create_dir_all(&root).unwrap();
+    assert!(app.open_file_picker(root.clone()));
+    assert!(app.global_shortcuts_enabled());
+    app.close_file_picker();
+
+    assert!(app.open_fuzzy_file_picker(root.clone()));
+    assert!(!app.global_shortcuts_enabled());
+    app.close_file_picker();
+    fs::remove_dir(root).unwrap();
+}
+
+#[test]
+fn code_selection_keeps_the_global_mouse_capture_binding_active() {
+    let (ss, theme) = test_assets();
+    let parsed = parse_markdown(
+        "```text\nbody\n```",
+        &ss,
+        &theme,
+        &test_md_theme(),
+        false,
+        true,
+    );
+    let mut app = App::new(
+        parsed.lines,
+        parsed.toc,
+        "test".to_string(),
+        false,
+        false,
+        None,
+        None,
+    );
+    app.set_code_blocks(parsed.code_blocks);
+    app.content_area = Rect::new(0, 0, 80, 20);
+    app.enter_code_select_mode();
+
+    let shortcut = KeyEvent::new(KeyCode::Char('m'), KeyModifiers::empty());
+    let action = app.global_keymap().action_for(&shortcut);
+
+    assert!(app.is_code_select_mode());
+    assert!(app.global_shortcuts_enabled());
+    assert_eq!(action, Some(GlobalAction::ToggleMouseCapture));
+
+    let was_enabled = app.is_mouse_capture_enabled();
+    match action.unwrap() {
+        GlobalAction::ToggleMouseCapture => {
+            app.toggle_mouse_capture();
+        }
+    }
+    assert_ne!(app.is_mouse_capture_enabled(), was_enabled);
 }
 
 #[test]

@@ -152,6 +152,25 @@ fn append_config_warning(warning: &mut Option<String>, next: Option<String>) {
     }
 }
 
+pub(crate) fn write_keymap_catalog(
+    config: &config::LeafConfig,
+    config_warning: Option<&str>,
+    keymap_name: &str,
+    include_hidden: bool,
+    output: &mut impl Write,
+    errors: &mut impl Write,
+) -> Result<()> {
+    if let Some(warning) = config_warning {
+        writeln!(errors, "{warning}")?;
+    }
+    let keymaps = config::resolve_keymaps(config)?;
+    let catalog = keymaps
+        .catalog(keymap_name, include_hidden)
+        .map_err(anyhow::Error::msg)?;
+    catalog.write_to(output)?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let options = parse_cli(&args)?;
@@ -179,10 +198,16 @@ fn main() -> Result<()> {
         completions::run_auto_complete(ac_arg)?;
         return Ok(());
     }
-    if options.show_keymap_actions.is_some() {
-        let (config, _) = config::load_config(&config::CliOverrides::default());
-        let keymap = config::resolve_viewer_keymap(&config)?;
-        keymap::viewer::print_catalog(&keymap, options.include_hidden_keymap_actions);
+    if let Some(ref keymap_name) = options.show_keymap_actions {
+        let (config, warning) = config::load_config(&config::CliOverrides::default());
+        write_keymap_catalog(
+            &config,
+            warning.as_deref(),
+            keymap_name,
+            options.include_hidden_keymap_actions,
+            &mut io::stdout().lock(),
+            &mut io::stderr().lock(),
+        )?;
         return Ok(());
     }
     let CliOptions {
@@ -202,7 +227,7 @@ fn main() -> Result<()> {
         theme: cli_theme.clone(),
     };
     let (user_config, mut config_warning) = config::load_config(&overrides);
-    let viewer_keymap = config::resolve_viewer_keymap(&user_config)?;
+    let keymaps = config::resolve_keymaps(&user_config)?;
 
     let theme_selection = if let Some(theme_name) = cli_theme.as_deref() {
         resolve_theme_selection(theme_name, &user_config.themes, None)
@@ -410,7 +435,7 @@ fn main() -> Result<()> {
     app.set_file_mode(file_mode);
     app.set_editor_config(Some(resolved_editor));
     app.set_code_line_numbers(code_line_numbers);
-    app.set_viewer_keymap(viewer_keymap);
+    app.set_keymaps(keymaps);
     app.set_config_warning(config_warning);
     if let Some(dir) = dir_arg {
         app.set_dir_arg(dir);
