@@ -19,20 +19,34 @@ extras = ["txt", "csv"]
 #[test]
 fn parse_and_resolve_viewer_keymap() {
     let toml = r#"
+[keymap.global]
+f12 = "toggle-mouse-capture"
+
 [keymap.viewer]
 esc = "quit"
 space = "page-down"
 backspace = "page-up"
 "#;
     let config: LeafConfig = toml::from_str(toml).unwrap();
-    let keymap = crate::config::resolve_viewer_keymap(&config).unwrap();
+    let keymaps = crate::config::resolve_keymaps(&config).unwrap();
 
     assert_eq!(
-        keymap.action_for(&crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Esc,
-            crossterm::event::KeyModifiers::empty(),
-        )),
+        keymaps
+            .viewer()
+            .action_for(&crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Esc,
+                crossterm::event::KeyModifiers::empty(),
+            )),
         Some(crate::keymap::viewer::ViewerAction::Quit)
+    );
+    assert_eq!(
+        keymaps
+            .global()
+            .action_for(&crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::F(12),
+                crossterm::event::KeyModifiers::empty(),
+            )),
+        Some(crate::keymap::global::GlobalAction::ToggleMouseCapture)
     );
 }
 

@@ -176,33 +176,31 @@ pub(crate) fn status_goto_line_section(app: &App) -> Option<Vec<Span<'static>>> 
 }
 
 pub(crate) fn status_hint_segments(app: &App) -> Vec<String> {
-    use crate::keymap::viewer::{key_label, ViewerAction::*};
+    use crate::keymap::{format_action_help, format_paired_help, viewer::ViewerAction::*};
 
     if app.is_goto_line_mode() || app.is_search_mode() {
         vec!["enter confirm".to_string(), "esc cancel".to_string()]
     } else if app.has_active_goto_line() {
         vec!["esc cancel".to_string()]
     } else if app.has_active_search() {
-        vec![
-            format!(
-                "{} next/prev",
-                key_label(app.viewer_keymap(), &[NextMatch, PreviousMatch], 12)
-            ),
-            "esc cancel".to_string(),
-        ]
+        let label = format_paired_help(app.viewer_keymap(), &[(NextMatch, PreviousMatch)])
+            .first()
+            .map(|row| row.key_label())
+            .unwrap_or_default();
+        vec![format!("{label} next/prev"), "esc cancel".to_string()]
     } else {
         [
-            (&[OpenInEditor][..], "edit"),
-            (&[StartSearch][..], "find"),
-            (&[ToggleToc][..], "toc"),
-            (&[OpenHelp][..], "help"),
-            (&[Quit][..], "quit"),
+            (OpenInEditor, "edit"),
+            (StartSearch, "find"),
+            (ToggleToc, "toc"),
+            (OpenHelp, "help"),
+            (Quit, "quit"),
         ]
         .into_iter()
-        .map(|(actions, description)| {
+        .map(|(action, description)| {
             format!(
                 "{} {description}",
-                key_label(app.viewer_keymap(), actions, 9)
+                format_action_help(app.viewer_keymap(), action).key_label()
             )
         })
         .collect()

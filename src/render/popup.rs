@@ -1,7 +1,10 @@
 use crate::{
     app::{App, PathKind, FLASH_DURATION_MS},
     cli::version_text,
-    keymap::viewer::{key_label, ViewerAction},
+    keymap::{
+        format_action_help, format_paired_help, format_sequence_help, global::GlobalAction,
+        viewer::ViewerAction, wrap_help_row, HelpLine, HelpRow,
+    },
     theme::{app_theme, theme_preset_label, THEME_PRESETS},
 };
 use ratatui::{
@@ -39,6 +42,25 @@ const BROWSER_PICKER_FOOTER_PREVIEW: &[&str] =
 const PICKER_FAILED_FOOTER_INIT: &[&str] = &["esc quit", "enter quit", "q quit"];
 
 const PICKER_FAILED_FOOTER_PREVIEW: &[&str] = &["esc close", "enter close", "ctrl+c close"];
+
+const HELP_POPUP_WIDTH: u16 = 53;
+const HELP_POPUP_BASE_HEIGHT: u16 = 26;
+const HELP_BORDER_WIDTH: usize = 1;
+const HELP_HORIZONTAL_PADDING: usize = 1;
+const HELP_VERTICAL_PADDING: usize = 0;
+const HELP_LEFT_SECTION_WIDTH: usize = 28;
+const HELP_CONTINUATION_INDENT: usize = 2;
+const HELP_KEY_WRAP_WIDTH: usize = 9;
+const HELP_RIGHT_KEY_CONTENT_WIDTH: usize = 10;
+const HELP_KEY_DESCRIPTION_GAP: usize = 2;
+
+const HELP_CONTENT_WIDTH: usize =
+    HELP_POPUP_WIDTH as usize - (HELP_BORDER_WIDTH + HELP_HORIZONTAL_PADDING) * 2;
+const HELP_LEFT_KEY_FIELD_WIDTH: usize = HELP_KEY_WRAP_WIDTH + HELP_KEY_DESCRIPTION_GAP;
+const HELP_RIGHT_KEY_FIELD_WIDTH: usize = HELP_RIGHT_KEY_CONTENT_WIDTH + HELP_KEY_DESCRIPTION_GAP;
+const HELP_LEFT_DESCRIPTION_FIELD_WIDTH: usize =
+    HELP_LEFT_SECTION_WIDTH - HELP_LEFT_KEY_FIELD_WIDTH;
+const HELP_RIGHT_SECTION_WIDTH: usize = HELP_CONTENT_WIDTH - HELP_LEFT_SECTION_WIDTH;
 
 pub(super) fn popup_footer(
     has_content: bool,
@@ -78,8 +100,6 @@ pub(super) fn popup_footer_line(segments: &[&'static str], bg: Color) -> Line<'s
 
 pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
     let theme = app_theme();
-    let area = centered_rect(69, 29, f.area());
-
     let select_hint =
         crate::editor::selection_modifier_label(&crate::editor::detect_terminal_emulator());
     let section_style = Style::default()
@@ -93,134 +113,180 @@ pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
     let title_style = Style::default()
         .fg(theme.markdown.heading_2)
         .add_modifier(Modifier::BOLD);
+
     use ViewerAction::*;
-    let row = |left_actions: &[ViewerAction],
-               left_description: &str,
-               right_keys: String,
-               right_description: &str| {
-        help_row(
-            key_label(app.viewer_keymap(), left_actions, 18),
-            left_description,
-            right_keys,
-            right_description,
-            key_style,
-            text_style,
-        )
+    let wrap_left = |rows: Vec<HelpRow>| {
+        rows.into_iter()
+            .flat_map(|row| {
+                wrap_help_row(
+                    row,
+                    HELP_KEY_WRAP_WIDTH,
+                    HELP_LEFT_SECTION_WIDTH,
+                    HELP_CONTINUATION_INDENT,
+                )
+            })
+            .collect::<Vec<_>>()
     };
-    let action_row = |left_actions: &[ViewerAction],
-                      left_description: &str,
-                      right_actions: &[ViewerAction],
-                      right_description: &str| {
-        row(
-            left_actions,
-            left_description,
-            key_label(app.viewer_keymap(), right_actions, 18),
-            right_description,
-        )
+    let wrap_right = |rows: Vec<HelpRow>| {
+        rows.into_iter()
+            .flat_map(|row| {
+                wrap_help_row(
+                    row,
+                    HELP_KEY_WRAP_WIDTH,
+                    HELP_RIGHT_SECTION_WIDTH,
+                    HELP_CONTINUATION_INDENT,
+                )
+            })
+            .collect::<Vec<_>>()
     };
-    let lines = vec![
+    let static_help = |keys: &str, description: &'static str| {
+        vec![HelpLine {
+            keys: keys.to_string(),
+            description,
+        }]
+    };
+    let append_columns = |lines: &mut Vec<Line<'static>>,
+                          left_blocks: Vec<Vec<HelpLine>>,
+                          right_blocks: Vec<Vec<HelpLine>>| {
+        let empty = HelpLine {
+            keys: String::new(),
+            description: "",
+        };
+        let left = left_blocks.into_iter().flatten().collect::<Vec<_>>();
+        let right = right_blocks.into_iter().flatten().collect::<Vec<_>>();
+        let line_count = left.len().max(right.len());
+        for line_index in 0..line_count {
+            lines.push(help_row(
+                left.get(line_index).unwrap_or(&empty),
+                right.get(line_index).unwrap_or(&empty),
+                key_style,
+                text_style,
+            ));
+        }
+    };
+
+    let mut lines = vec![
         Line::from(vec![Span::styled(version_text().to_string(), title_style)]),
         Line::from(vec![Span::styled(
             "Keyboard shortcuts",
             Style::default().fg(theme.ui.status_shortcut_fg),
         )]),
         Line::from(""),
-        Line::from(vec![Span::styled(
-            "Navigation                            Mouse",
-            section_style,
-        )]),
-        action_row(
-            &[ScrollDown, ScrollUp],
-            "scroll",
-            &[ToggleMouseCapture],
-            "capture",
-        ),
-        row(
-            &[PageDown, PageUp],
-            "page up/down",
-            "dbl-click".to_string(),
-            "copy code",
-        ),
-        row(
-            &[ScrollTop, ScrollBottom],
-            "top/bottom",
-            "dbl-click".to_string(),
-            "copy link",
-        ),
-        row(
-            &[
+        help_section_headings("Navigation", "Mouse", section_style),
+    ];
+    append_columns(
+        &mut lines,
+        vec![
+            wrap_left(format_paired_help(
+                app.viewer_keymap(),
+                &[(ScrollDown, ScrollUp)],
+            )),
+            wrap_left(format_paired_help(
+                app.viewer_keymap(),
+                &[(PageUp, PageDown)],
+            )),
+            wrap_left(format_paired_help(
+                app.viewer_keymap(),
+                &[(ScrollTop, ScrollBottom)],
+            )),
+            wrap_left(vec![format_sequence_help(
+                app.viewer_keymap(),
                 ToggleReverseNavigation,
-                Jump1,
-                Jump2,
-                Jump3,
-                Jump4,
-                Jump5,
-                Jump6,
-                Jump7,
-                Jump8,
-                Jump9,
-            ],
-            "jump/reverse",
-            "ctrl+click".to_string(),
-            "open link",
-        ),
-        row(
-            &[EnterCodeSelection],
-            "focus code",
-            select_hint.to_string(),
-            "select text",
-        ),
-        row(
-            &[FocusNextToc, FocusPreviousToc, ScrollTocDown, ScrollTocUp],
-            "navigate toc",
-            String::new(),
-            "",
-        ),
+                &[
+                    Jump1, Jump2, Jump3, Jump4, Jump5, Jump6, Jump7, Jump8, Jump9,
+                ],
+            )]),
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                EnterCodeSelection,
+            )]),
+            wrap_left(format_paired_help(
+                app.viewer_keymap(),
+                &[
+                    (FocusNextToc, FocusPreviousToc),
+                    (ScrollTocUp, ScrollTocDown),
+                ],
+            )),
+        ],
+        vec![
+            wrap_right(vec![format_action_help(
+                app.global_keymap(),
+                GlobalAction::ToggleMouseCapture,
+            )]),
+            static_help("dbl-click", "copy code"),
+            static_help("dbl-click", "copy link"),
+            static_help("ctrl+click", "open link"),
+            static_help(select_hint, "slct text"),
+            static_help("", ""),
+        ],
+    );
+    lines.extend([
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Search                                ", section_style),
-            Span::styled("Watch", section_style),
-        ]),
-        action_row(&[StartSearch], "find", &[ToggleWatch], "toggle"),
-        action_row(
-            &[NextMatch, PreviousMatch],
-            "next/prev",
-            &[Reload],
-            "reload",
-        ),
+        help_section_headings("Search", "Watch", section_style),
+    ]);
+    append_columns(
+        &mut lines,
+        vec![
+            wrap_left(vec![format_action_help(app.viewer_keymap(), StartSearch)]),
+            wrap_left(format_paired_help(
+                app.viewer_keymap(),
+                &[(NextMatch, PreviousMatch)],
+            )),
+        ],
+        vec![
+            wrap_right(vec![format_action_help(app.viewer_keymap(), ToggleWatch)]),
+            wrap_right(vec![format_action_help(app.viewer_keymap(), Reload)]),
+        ],
+    );
+    lines.extend([
         Line::from(""),
         Line::from(vec![Span::styled("Actions", section_style)]),
-        action_row(
-            &[OpenEditorPicker],
-            "editor picker",
-            &[OpenInEditor],
-            "edit",
-        ),
-        action_row(
-            &[ToggleLineNumbers],
-            "line numbers",
-            &[StartGotoLine],
-            "goto",
-        ),
-        action_row(
-            &[OpenFileBrowser],
-            "file browser",
-            &[OpenFuzzyPicker],
-            "pick",
-        ),
-        action_row(&[OpenThemePicker], "theme picker", &[OpenHelp], "help"),
-        action_row(&[OpenPathViewer], "path viewer", &[Quit], "quit"),
-        action_row(
-            &[CopyRelativePath],
-            "copy rel path",
-            &[CopyAbsolutePath],
-            "copy abs path",
-        ),
-        action_row(&[ToggleToc], "toggle toc", &[CopyVisibleCode], "copy code"),
-        Line::from(""),
+    ]);
+    append_columns(
+        &mut lines,
+        vec![
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                OpenEditorPicker,
+            )]),
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                ToggleLineNumbers,
+            )]),
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                OpenFileBrowser,
+            )]),
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                OpenThemePicker,
+            )]),
+            wrap_left(vec![format_action_help(
+                app.viewer_keymap(),
+                OpenPathViewer,
+            )]),
+            wrap_left(vec![format_action_help(app.viewer_keymap(), ToggleToc)]),
+        ],
+        vec![
+            wrap_right(vec![format_action_help(app.viewer_keymap(), OpenInEditor)]),
+            wrap_right(vec![format_action_help(app.viewer_keymap(), StartGotoLine)]),
+            wrap_right(vec![format_action_help(
+                app.viewer_keymap(),
+                OpenFuzzyPicker,
+            )]),
+            wrap_right(vec![format_action_help(app.viewer_keymap(), OpenHelp)]),
+            wrap_right(vec![format_action_help(app.viewer_keymap(), Quit)]),
+            static_help("", ""),
+        ],
+    );
+    lines.extend([
         Line::from(""),
         popup_footer_line(&["esc close", "? close"], theme.ui.toc_bg),
-    ];
+    ]);
+
+    let popup_height = HELP_POPUP_BASE_HEIGHT
+        .max((lines.len() + (HELP_BORDER_WIDTH + HELP_VERTICAL_PADDING) * 2) as u16);
+    let area = centered_rect(HELP_POPUP_WIDTH, popup_height, f.area());
 
     f.render_widget(Clear, area);
     f.render_widget(
@@ -230,26 +296,53 @@ pub(super) fn render_help_popup(f: &mut Frame, app: &App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.ui.toc_border))
                 .style(Style::default().bg(theme.ui.toc_bg))
-                .padding(Padding::new(1, 1, 0, 0)),
+                .padding(Padding::new(
+                    HELP_HORIZONTAL_PADDING as u16,
+                    HELP_HORIZONTAL_PADDING as u16,
+                    HELP_VERTICAL_PADDING as u16,
+                    HELP_VERTICAL_PADDING as u16,
+                )),
         ),
         area,
     );
 }
 
+fn help_section_headings(left: &'static str, right: &'static str, style: Style) -> Line<'static> {
+    Line::from(Span::styled(
+        format!("{left:<HELP_LEFT_SECTION_WIDTH$}{right}"),
+        style,
+    ))
+}
+
 fn help_row(
-    left_keys: String,
-    left_description: &str,
-    right_keys: String,
-    right_description: &str,
+    left: &HelpLine,
+    right: &HelpLine,
     key_style: Style,
     text_style: Style,
 ) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!("{left_keys:<19}"), key_style),
-        Span::styled(format!("{left_description:<16}"), text_style),
-        Span::styled(format!("{right_keys:<19}"), key_style),
-        Span::styled(right_description.to_string(), text_style),
-    ])
+    let mut spans = if left.description.is_empty() {
+        vec![Span::styled(
+            format!("{:<HELP_LEFT_SECTION_WIDTH$}", left.keys),
+            key_style,
+        )]
+    } else {
+        vec![
+            Span::styled(
+                format!("{:<HELP_LEFT_KEY_FIELD_WIDTH$}", left.keys),
+                key_style,
+            ),
+            Span::styled(
+                format!("{:<HELP_LEFT_DESCRIPTION_FIELD_WIDTH$}", left.description),
+                text_style,
+            ),
+        ]
+    };
+    spans.push(Span::styled(
+        format!("{:<HELP_RIGHT_KEY_FIELD_WIDTH$}", right.keys),
+        key_style,
+    ));
+    spans.push(Span::styled(right.description, text_style));
+    Line::from(spans)
 }
 
 pub(super) fn render_theme_popup(f: &mut Frame, app: &App) {

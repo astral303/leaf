@@ -52,12 +52,15 @@
 
 - `src/runtime/`
   - `mod.rs`  :  event loop, polling, timers, resize synchronization
-  - `keyboard.rs`  :  keyboard handling with mode-aware branching (help → picker_loading → picker_failed → file_picker → theme_picker → editor_picker → path_popup → goto_line → search → normal)
+  - `keyboard.rs`  :  global binding dispatch followed by mode-aware branching (help → picker_loading → picker_failed → file_picker → theme_picker → editor_picker → path_popup → goto_line → search → normal) and viewer dispatch
   - `mouse.rs`  :  mouse handling (scroll, click, double-click, scrollbar drag, link hover)
 
 - `src/keymap/`
-  - `mod.rs`  :  key parsing, normalization, sparse overrides, and the generic `BindingSet<A>`
-  - `viewer.rs`  :  viewer actions, built-in bindings, descriptions, and keymap catalog output
+  - `mod.rs`  :  sparse overrides, the generic `BindingSet<A>`, typed keymap storage, cross-keymap validation, and catalog discovery
+  - `chord.rs`  :  key-chord parsing, normalization, canonical display, and compact help atoms
+  - `help.rs`  :  curated help-label pairing, grouping, range collapsing, and wrapping
+  - `global.rs`  :  global actions and built-in bindings
+  - `viewer.rs`  :  viewer actions and built-in bindings
 
 - `src/theme/`
   - `mod.rs`  :  theme types, global state, preset selection API
@@ -75,7 +78,7 @@
 - `src/config.rs`
   - `config.toml` loading and creation (`--config`, `--config reset`)
   - `LeafConfig` defaults (theme, editor, watch, width, extras, keymap) with CLI overrides
-  - viewer keymap validation before terminal initialization
+  - global and viewer keymap validation before terminal initialization
 
 - `src/completions.rs`
   - shell completion installation (`--auto-complete`)
@@ -115,7 +118,7 @@
   - `config.rs`  :  configuration parsing tests
   - `completions.rs`  :  auto-complete argument parsing and completion script installation tests
   - `inline.rs`  :  inline spec parsing, format resolution, and write_lines tests
-  - `keymap.rs`  :  default bindings, exact modifiers, sparse overrides, and validation
+  - `keymap.rs`  :  key chords, default bindings, sparse overrides, validation, catalogs, and derived help/status labels
   - `update.rs`  :  release asset matching and checksum verification
 
 ## Execution flow
@@ -127,10 +130,11 @@
    - the file picker if no input is provided interactively.
 3. `markdown/` parses the source into rendered lines + TOC.
 4. If `--inline` is active, `inline.rs` writes lines to stdout and exits.
-5. `App` stores the state, effective viewer keymap, and caches.
+5. `App` stores the state, effective global and viewer keymaps, and caches.
 6. `runtime.rs` runs the event loop:
    - processes pending picker queue → spawns loading thread
    - polls picker loading → installs results when ready
+   - dispatches global bindings before modal input, except during text-entry modes
    - handles modal input through mode-aware branching
    - dispatches ordinary viewer input through the effective `ViewerKeymap`
 7. `render/` draws each frame from `App`.
@@ -140,7 +144,7 @@
 - **Initial mode** (`!app.has_content()`): no file loaded, picker is the main view. Quit shortcuts exit the app.
 - **Preview mode** (`app.has_content()`): file loaded via argument, stdin, or picker selection. Quit shortcuts in pickers close the popup and return to the preview.
 
-Modal controls take precedence over viewer bindings. Search, picker, help, go-to-line, and code-selection modes keep their local controls; viewer overrides apply after those modes have been handled.
+Global bindings take precedence over modal and viewer bindings, but are disabled during search, go-to-line, and fuzzy-picker text entry. Modal controls take precedence over viewer bindings. Search, picker, help, go-to-line, and code-selection modes keep their local controls; viewer overrides apply after those modes have been handled.
 
 ## Picker lifecycle
 

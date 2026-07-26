@@ -1,5 +1,6 @@
 use crate::{
     app::{App, WatchFlash},
+    keymap::global::GlobalAction,
     keymap::viewer::ViewerAction,
 };
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyModifiers};
@@ -22,6 +23,12 @@ pub(super) fn handle_key_event(
     ss: &SyntaxSet,
     themes: &ThemeSet,
 ) -> anyhow::Result<HandleResult> {
+    if app.global_shortcuts_enabled() {
+        if let Some(action) = app.global_keymap().action_for(&key) {
+            return handle_global_action(terminal, app, action);
+        }
+    }
+
     let mut state_changed = true;
     if app.is_help_open() {
         match key.code {
@@ -264,6 +271,24 @@ pub(super) fn handle_key_event(
     })
 }
 
+fn handle_global_action(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    action: GlobalAction,
+) -> anyhow::Result<HandleResult> {
+    match action {
+        GlobalAction::ToggleMouseCapture => {
+            let enabled = app.toggle_mouse_capture();
+            if enabled {
+                execute!(terminal.backend_mut(), EnableMouseCapture)?;
+            } else {
+                execute!(terminal.backend_mut(), DisableMouseCapture)?;
+            }
+        }
+    }
+    Ok(HandleResult::Continue { redraw: true })
+}
+
 fn handle_viewer_action(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -322,14 +347,6 @@ fn handle_viewer_action(
         Jump9 => app.cycle_numkey(9),
         EnterCodeSelection => app.enter_code_select_mode(),
         CopyVisibleCode => app.copy_first_visible_code_block(),
-        ToggleMouseCapture => {
-            let enabled = app.toggle_mouse_capture();
-            if enabled {
-                execute!(terminal.backend_mut(), EnableMouseCapture)?;
-            } else {
-                execute!(terminal.backend_mut(), DisableMouseCapture)?;
-            }
-        }
     }
     Ok(HandleResult::Continue { redraw })
 }

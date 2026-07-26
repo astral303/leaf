@@ -35,13 +35,13 @@ pub(crate) struct LeafConfig {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub(crate) struct KeymapConfig {
+    pub(crate) global: BTreeMap<String, String>,
     pub(crate) viewer: BTreeMap<String, String>,
 }
 
-pub(crate) fn resolve_viewer_keymap(
-    config: &LeafConfig,
-) -> anyhow::Result<crate::keymap::viewer::ViewerKeymap> {
-    crate::keymap::viewer::resolve(&config.keymap.viewer).map_err(anyhow::Error::msg)
+pub(crate) fn resolve_keymaps(config: &LeafConfig) -> anyhow::Result<crate::keymap::Keymaps> {
+    crate::keymap::Keymaps::resolve(&config.keymap.global, &config.keymap.viewer)
+        .map_err(anyhow::Error::msg)
 }
 
 fn deserialize_lenient_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>

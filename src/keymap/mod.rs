@@ -1,275 +1,245 @@
-use std::fmt;
+use std::collections::BTreeMap;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyEvent;
 
+pub(crate) mod global;
 pub(crate) mod viewer;
 
+mod chord;
+pub(crate) use chord::KeyChord;
+
+mod help;
+pub(crate) use help::{
+    format_action_help, format_paired_help, format_sequence_help, wrap_help_row, HelpLine, HelpRow,
+};
+
+pub(crate) struct ActionDefinition<A> {
+    pub(crate) action: A,
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) help_visible: bool,
+    pub(crate) paired_help_label: &'static str,
+    pub(crate) singular_help_label: &'static str,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct KeyChord {
-    code: KeyCode,
-    modifiers: KeyModifiers,
+pub(crate) enum HelpVisibility {
+    Primary,
+    Synonym,
 }
 
-impl KeyChord {
-    pub(crate) fn parse(value: &str) -> Result<Self, String> {
-        let value = value.trim();
-        if value.is_empty() {
-            return Err("key cannot be empty".to_string());
-        }
-
-        let (modifier_parts, key) = if value == "+" {
-            (Vec::new(), "+")
-        } else if let Some(prefix) = value.strip_suffix("++") {
-            (prefix.split('+').collect(), "+")
-        } else {
-            let mut parts: Vec<&str> = value.split('+').collect();
-            let key = parts.pop().unwrap_or_default();
-            (parts, key)
-        };
-        let mut modifiers = KeyModifiers::empty();
-
-        for modifier in &modifier_parts {
-            let flag = match modifier.trim().to_ascii_lowercase().as_str() {
-                "ctrl" | "control" => KeyModifiers::CONTROL,
-                "alt" | "option" => KeyModifiers::ALT,
-                "shift" => KeyModifiers::SHIFT,
-                "meta" | "super" | "hyper" | "cmd" | "command" => {
-                    return Err(format!("unsupported modifier '{modifier}'"));
-                }
-                "" => return Err(format!("invalid key '{value}'")),
-                _ => return Err(format!("unknown modifier '{modifier}'")),
-            };
-            if modifiers.contains(flag) {
-                return Err(format!("duplicate modifier '{modifier}'"));
-            }
-            modifiers.insert(flag);
-        }
-
-        let code = parse_key_code(key)?;
-        Ok(Self::normalized(code, modifiers))
-    }
-
-    pub(crate) fn from_event(event: &KeyEvent) -> Self {
-        Self::normalized(event.code, event.modifiers)
-    }
-
-    fn normalized(code: KeyCode, mut modifiers: KeyModifiers) -> Self {
-        let code = match code {
-            KeyCode::Char(c) if modifiers.contains(KeyModifiers::SHIFT) => {
-                modifiers.remove(KeyModifiers::SHIFT);
-                KeyCode::Char(c.to_ascii_uppercase())
-            }
-            KeyCode::BackTab => {
-                modifiers.insert(KeyModifiers::SHIFT);
-                KeyCode::Tab
-            }
-            other => other,
-        };
-        Self { code, modifiers }
-    }
+#[derive(Clone, Debug)]
+pub(crate) struct Binding<A> {
+    key: KeyChord,
+    action: A,
+    help_visibility: HelpVisibility,
+    is_default: bool,
 }
 
-impl fmt::Display for KeyChord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.modifiers.contains(KeyModifiers::CONTROL) {
-            write!(f, "ctrl+")?;
+impl<A> Binding<A> {
+    pub(crate) fn new(key: KeyChord, action: A, help_visibility: HelpVisibility) -> Self {
+        Self {
+            key,
+            action,
+            help_visibility,
+            is_default: true,
         }
-        if self.modifiers.contains(KeyModifiers::ALT) {
-            write!(f, "alt+")?;
-        }
-        if self.modifiers.contains(KeyModifiers::SHIFT) {
-            write!(f, "shift+")?;
-        }
-        match self.code {
-            KeyCode::Char(c) if c.is_ascii_uppercase() => {
-                write!(f, "shift+{}", c.to_ascii_lowercase())
-            }
-            KeyCode::Char(' ') => write!(f, "space"),
-            KeyCode::Char(c) => write!(f, "{c}"),
-            KeyCode::Esc => write!(f, "esc"),
-            KeyCode::Enter => write!(f, "enter"),
-            KeyCode::Backspace => write!(f, "backspace"),
-            KeyCode::Left => write!(f, "left"),
-            KeyCode::Right => write!(f, "right"),
-            KeyCode::Up => write!(f, "up"),
-            KeyCode::Down => write!(f, "down"),
-            KeyCode::Home => write!(f, "home"),
-            KeyCode::End => write!(f, "end"),
-            KeyCode::PageUp => write!(f, "page-up"),
-            KeyCode::PageDown => write!(f, "page-down"),
-            KeyCode::Tab => write!(f, "tab"),
-            KeyCode::Delete => write!(f, "delete"),
-            KeyCode::Insert => write!(f, "insert"),
-            KeyCode::F(number) => write!(f, "f{number}"),
-            _ => write!(f, "{:?}", self.code),
+    }
+
+    fn configured(key: KeyChord, action: A) -> Self {
+        Self {
+            key,
+            action,
+            help_visibility: HelpVisibility::Primary,
+            is_default: false,
         }
     }
 }
 
-fn parse_key_code(value: &str) -> Result<KeyCode, String> {
-    let normalized = value.trim().to_ascii_lowercase().replace(['_', ' '], "-");
-    let named = match normalized.as_str() {
-        "esc" | "escape" => Some(KeyCode::Esc),
-        "enter" | "return" => Some(KeyCode::Enter),
-        "backspace" | "bsp" => Some(KeyCode::Backspace),
-        "space" => Some(KeyCode::Char(' ')),
-        "left" | "arrow-left" => Some(KeyCode::Left),
-        "right" | "arrow-right" => Some(KeyCode::Right),
-        "up" | "arrow-up" => Some(KeyCode::Up),
-        "down" | "arrow-down" => Some(KeyCode::Down),
-        "home" => Some(KeyCode::Home),
-        "end" => Some(KeyCode::End),
-        "page-up" | "pageup" | "pgup" => Some(KeyCode::PageUp),
-        "page-down" | "pagedown" | "pgdown" | "pgdn" => Some(KeyCode::PageDown),
-        "tab" => Some(KeyCode::Tab),
-        "backtab" | "back-tab" => Some(KeyCode::BackTab),
-        "delete" | "del" => Some(KeyCode::Delete),
-        "insert" | "ins" => Some(KeyCode::Insert),
-        _ => None,
-    };
-    if let Some(code) = named {
-        return Ok(code);
+pub(crate) trait BindingAction: Copy + Eq + 'static {
+    fn definitions() -> &'static [ActionDefinition<Self>];
+
+    fn parse(value: &str) -> Option<Self> {
+        let name = value.trim().to_ascii_lowercase();
+        Self::definitions()
+            .iter()
+            .find(|definition| definition.name == name)
+            .map(|definition| definition.action)
     }
 
-    if let Some(number) = normalized
-        .strip_prefix('f')
-        .and_then(|n| n.parse::<u8>().ok())
-    {
-        if (1..=24).contains(&number) {
-            return Ok(KeyCode::F(number));
-        }
+    fn definition(self) -> &'static ActionDefinition<Self> {
+        Self::definitions()
+            .iter()
+            .find(|definition| definition.action == self)
+            .expect("every binding action must have a definition")
     }
-
-    let mut chars = value.chars();
-    let Some(c) = chars.next() else {
-        return Err("key cannot be empty".to_string());
-    };
-    if chars.next().is_none() && !c.is_control() {
-        return Ok(KeyCode::Char(c));
-    }
-    Err(format!("unknown key '{value}'"))
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct BindingSet<A> {
-    bindings: Vec<(KeyChord, A)>,
+    name: String,
+    bindings: Vec<Binding<A>>,
     configured_actions: Vec<A>,
 }
 
 impl<A: Copy + Eq> BindingSet<A> {
-    pub(crate) fn new(bindings: impl IntoIterator<Item = (KeyChord, A)>) -> Self {
+    pub(crate) fn new(name: &str, bindings: impl IntoIterator<Item = Binding<A>>) -> Self {
         Self {
+            name: name.to_string(),
             bindings: bindings.into_iter().collect(),
             configured_actions: Vec::new(),
         }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
     }
 
     pub(crate) fn action_for(&self, event: &KeyEvent) -> Option<A> {
         let chord = KeyChord::from_event(event);
         self.bindings
             .iter()
-            .find(|(candidate, _)| *candidate == chord)
-            .map(|(_, action)| *action)
+            .find(|binding| binding.key == chord)
+            .map(|binding| binding.action)
     }
 
     pub(crate) fn keys_for(&self, actions: &[A]) -> Vec<String> {
         self.bindings
             .iter()
-            .filter(|(_, action)| actions.contains(action))
-            .map(|(key, _)| key.to_string())
+            .filter(|binding| actions.contains(&binding.action))
+            .map(|binding| binding.key.to_string())
             .collect()
     }
 
     pub(crate) fn is_configured(&self, action: A) -> bool {
         self.configured_actions.contains(&action)
     }
+}
 
+impl<A: BindingAction> BindingSet<A> {
     pub(crate) fn apply_overrides(
         &mut self,
-        overrides: &std::collections::BTreeMap<String, String>,
-        all_actions: &[A],
-        parse_action: impl Fn(&str) -> Option<A>,
-        action_name: impl Fn(A) -> &'static str,
+        overrides: &BTreeMap<String, String>,
     ) -> Result<(), String> {
-        let mut parsed: Vec<(KeyChord, Option<A>, &str)> = Vec::new();
-        let mut errors = Vec::new();
-
-        for (key_name, action_name_value) in overrides {
-            let key = match KeyChord::parse(key_name) {
-                Ok(key) => key,
-                Err(message) => {
-                    errors.push(format!("'{key_name}': {message}"));
-                    continue;
-                }
-            };
-            let action = if action_name_value.eq_ignore_ascii_case("none") {
-                None
-            } else {
-                match parse_action(action_name_value) {
-                    Some(action) => Some(action),
-                    None => {
-                        errors.push(format!(
-                            "'{key_name}': unknown action '{action_name_value}'"
-                        ));
-                        continue;
-                    }
-                }
-            };
-
-            if let Some((_, previous, previous_name)) =
-                parsed.iter().find(|(candidate, _, _)| *candidate == key)
-            {
-                if *previous != action {
-                    errors.push(format!(
-                        "'{key_name}' conflicts with equivalent key '{previous_name}'"
-                    ));
-                }
-                continue;
-            }
-            parsed.push((key, action, key_name));
+        let (parsed, mut errors) = parse_overrides(overrides);
+        for override_ in parsed {
+            self.apply_override(override_);
         }
 
-        for (key, replacement, _) in parsed {
-            if let Some(index) = self
-                .bindings
-                .iter()
-                .position(|(candidate, _)| *candidate == key)
-            {
-                let previous = self.bindings[index].1;
-                mark_configured(&mut self.configured_actions, previous);
-                match replacement {
-                    Some(action) => {
-                        self.bindings.remove(index);
-                        self.bindings.insert(0, (key, action));
-                        mark_configured(&mut self.configured_actions, action);
-                    }
-                    None => {
-                        self.bindings.remove(index);
-                    }
-                }
-            } else if let Some(action) = replacement {
-                self.bindings.insert(0, (key, action));
-                mark_configured(&mut self.configured_actions, action);
-            }
-        }
-
-        let missing: Vec<String> = all_actions
-            .iter()
-            .copied()
-            .filter(|action| !self.bindings.iter().any(|(_, bound)| bound == action))
-            .map(|action| action_name(action).to_string())
-            .collect();
+        let missing = self.unbound_action_names();
         if !missing.is_empty() {
             errors.push(format!(
-                "every viewer action needs a key; unbound: {}",
+                "every {} action needs a key; unbound: {}",
+                self.name,
                 missing.join(", ")
             ));
         }
-        if !errors.is_empty() {
-            return Err(format_errors(errors));
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format_errors(&self.name, errors))
         }
-        Ok(())
     }
+
+    fn apply_override(&mut self, override_: ParsedOverride<'_, A>) {
+        let ParsedOverride {
+            key, replacement, ..
+        } = override_;
+        if let Some(index) = self.bindings.iter().position(|binding| binding.key == key) {
+            let previous = self.bindings[index].action;
+            mark_configured(&mut self.configured_actions, previous);
+            if replacement == Some(previous) {
+                self.bindings[index].help_visibility = HelpVisibility::Primary;
+                return;
+            }
+            self.bindings.remove(index);
+        }
+        if let Some(action) = replacement {
+            self.bindings.push(Binding::configured(key, action));
+            mark_configured(&mut self.configured_actions, action);
+        }
+    }
+
+    fn unbound_action_names(&self) -> Vec<String> {
+        A::definitions()
+            .iter()
+            .filter(|definition| {
+                !self
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.action == definition.action)
+            })
+            .map(|definition| definition.name.to_string())
+            .collect()
+    }
+
+    fn catalog(&self, include_hidden: bool) -> KeymapCatalog<'_> {
+        let rows = A::definitions()
+            .iter()
+            .filter(|definition| include_hidden || definition.help_visible)
+            .map(|definition| CatalogRow {
+                keys: self.keys_for(&[definition.action]).join(", "),
+                action: definition.name,
+                description: definition.description,
+                configured: self.is_configured(definition.action),
+            })
+            .collect();
+        KeymapCatalog {
+            name: self.name(),
+            rows,
+        }
+    }
+}
+
+struct ParsedOverride<'a, A> {
+    key: KeyChord,
+    replacement: Option<A>,
+    key_name: &'a str,
+}
+
+fn parse_overrides<'a, A: BindingAction>(
+    overrides: &'a BTreeMap<String, String>,
+) -> (Vec<ParsedOverride<'a, A>>, Vec<String>) {
+    let mut parsed = Vec::<ParsedOverride<'a, A>>::new();
+    let mut errors = Vec::new();
+
+    for (key_name, action_name) in overrides {
+        let key = match KeyChord::parse(key_name) {
+            Ok(key) => key,
+            Err(message) => {
+                errors.push(format!("'{key_name}': {message}"));
+                continue;
+            }
+        };
+        let replacement = if action_name.eq_ignore_ascii_case("none") {
+            None
+        } else {
+            match A::parse(action_name) {
+                Some(action) => Some(action),
+                None => {
+                    errors.push(format!("'{key_name}': unknown action '{action_name}'"));
+                    continue;
+                }
+            }
+        };
+
+        if let Some(previous) = parsed.iter().find(|override_| override_.key == key) {
+            if previous.replacement != replacement {
+                errors.push(format!(
+                    "'{key_name}' conflicts with equivalent key '{}'",
+                    previous.key_name
+                ));
+            }
+            continue;
+        }
+        parsed.push(ParsedOverride {
+            key,
+            replacement,
+            key_name,
+        });
+    }
+
+    (parsed, errors)
 }
 
 fn mark_configured<A: Copy + Eq>(configured: &mut Vec<A>, action: A) {
@@ -278,37 +248,139 @@ fn mark_configured<A: Copy + Eq>(configured: &mut Vec<A>, action: A) {
     }
 }
 
-fn format_errors(errors: Vec<String>) -> String {
+fn format_errors(name: &str, errors: Vec<String>) -> String {
     let details = errors
         .into_iter()
         .map(|error| format!("  - {error}"))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("Invalid viewer keymap:\n{details}")
+    format!("Invalid {name} keymap:\n{details}")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub(crate) struct KeymapCatalog<'a> {
+    name: &'a str,
+    rows: Vec<CatalogRow>,
+}
 
-    #[test]
-    fn normalizes_equivalent_key_spellings() {
-        assert_eq!(KeyChord::parse("shift+e"), KeyChord::parse("E"));
-        assert_eq!(KeyChord::parse("page down"), KeyChord::parse("pgdn"));
-        assert_eq!(KeyChord::parse("option+x"), KeyChord::parse("alt+x"));
+struct CatalogRow {
+    keys: String,
+    action: &'static str,
+    description: &'static str,
+    configured: bool,
+}
+
+impl KeymapCatalog<'_> {
+    pub(crate) fn name(&self) -> &str {
+        self.name
     }
 
-    #[test]
-    fn rejects_unsupported_modifiers() {
-        assert!(KeyChord::parse("super+x")
-            .unwrap_err()
-            .contains("unsupported modifier"));
+    pub(crate) fn write_to(&self, writer: &mut impl std::io::Write) -> std::io::Result<()> {
+        let key_width = self
+            .rows
+            .iter()
+            .fold("KEYS".len(), |width, row| width.max(row.keys.len()));
+        let action_width = self
+            .rows
+            .iter()
+            .fold("ACTION".len(), |width, row| width.max(row.action.len()));
+        let description_width = self.rows.iter().fold("DESCRIPTION".len(), |width, row| {
+            width.max(row.description.len())
+        });
+
+        writeln!(
+            writer,
+            "{:<key_width$}  {:<action_width$}  {:<description_width$}  CONFIGURED",
+            "KEYS", "ACTION", "DESCRIPTION"
+        )?;
+        for row in &self.rows {
+            let configured = if row.configured { "yes" } else { "no" };
+            writeln!(
+                writer,
+                "{:<key_width$}  {:<action_width$}  {:<description_width$}  {configured}",
+                row.keys, row.action, row.description
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Keymaps {
+    global: global::GlobalKeymap,
+    viewer: viewer::ViewerKeymap,
+}
+
+impl Keymaps {
+    pub(crate) fn defaults() -> Self {
+        Self::new(global::default_keymap(), viewer::default_keymap())
+            .expect("default keymaps must not conflict")
     }
 
-    #[test]
-    fn accepts_function_keys_and_literal_plus() {
-        assert_eq!(KeyChord::parse("f24").unwrap().to_string(), "f24");
-        assert_eq!(KeyChord::parse("+").unwrap().to_string(), "+");
-        assert_eq!(KeyChord::parse("ctrl++").unwrap().to_string(), "ctrl++");
+    pub(crate) fn resolve(
+        global_overrides: &BTreeMap<String, String>,
+        viewer_overrides: &BTreeMap<String, String>,
+    ) -> Result<Self, String> {
+        Self::new(
+            global::resolve(global_overrides)?,
+            viewer::resolve(viewer_overrides)?,
+        )
+    }
+
+    fn new(global: global::GlobalKeymap, viewer: viewer::ViewerKeymap) -> Result<Self, String> {
+        let mut collisions = Vec::new();
+        for global_binding in &global.bindings {
+            let Some(viewer_binding) = viewer
+                .bindings
+                .iter()
+                .find(|viewer_binding| viewer_binding.key == global_binding.key)
+            else {
+                continue;
+            };
+            collisions.push(format!(
+                "'{}' is bound in {} to '{}' and in {} to '{}'",
+                global_binding.key,
+                global.name(),
+                global_binding.action.definition().name,
+                viewer.name(),
+                viewer_binding.action.definition().name
+            ));
+        }
+        if !collisions.is_empty() {
+            let details = collisions
+                .into_iter()
+                .map(|collision| format!("  - {collision}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!("Invalid keymaps:\n{details}"));
+        }
+        Ok(Self { global, viewer })
+    }
+
+    pub(crate) fn global(&self) -> &global::GlobalKeymap {
+        &self.global
+    }
+
+    pub(crate) fn viewer(&self) -> &viewer::ViewerKeymap {
+        &self.viewer
+    }
+
+    pub(crate) fn catalog(
+        &self,
+        name: &str,
+        include_hidden: bool,
+    ) -> Result<KeymapCatalog<'_>, String> {
+        let catalogs = [
+            self.global.catalog(include_hidden),
+            self.viewer.catalog(include_hidden),
+        ];
+        let expected = catalogs
+            .iter()
+            .map(KeymapCatalog::name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        catalogs
+            .into_iter()
+            .find(|catalog| catalog.name() == name)
+            .ok_or_else(|| format!("Unknown keymap: '{name}'. Expected: {expected}"))
     }
 }

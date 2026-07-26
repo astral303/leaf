@@ -157,7 +157,7 @@ Once added, use `\md` to open a live preview. To switch focus back to the Markdo
 
 ## Configuration
 
-Set default values for **theme**, **editor**, **watch** mode, **extra** file types, and viewer keybindings via `config.toml`:
+Set default values for **theme**, **editor**, **watch** mode, **extra** file types, and keybindings via `config.toml`:
 
 ```bash
 leaf --config
@@ -173,6 +173,9 @@ width = 80                # maximum content width (min: 20, default: terminal wi
 extras = ["txt", "rs"]    # extra file types shown in the picker
 code-line-numbers = true  # show line numbers inside fenced code blocks
 tab-title-length = -1     # terminal tab title truncation (min: 20, -1: no truncation)
+
+[keymap.global]
+"f12" = "toggle-mouse-capture"
 
 [keymap.viewer]
 "esc" = "quit"
@@ -256,7 +259,7 @@ See [`gruvbox.toml`](gruvbox.toml) for a complete example with all available col
 
 ## Keybindings
 
-The help popup and status bar show the effective viewer keybindings. The built-in defaults are:
+The help popup and status bar show the effective keybindings. The built-in viewer defaults are:
 
 | Key | Action | Key | Action |
 |---|---|---|---|
@@ -276,9 +279,16 @@ The help popup and status bar show the effective viewer keybindings. The built-i
 | `r` | Force reload (watch mode) | `Shift+Drag` | Select text |
 | `q` | Quit | `Option+Drag` | Select text (iTerm2) |
 
+Global bindings work across the viewer and most popups. They stay inactive while you type in search, go-to-line, or the fuzzy picker. The built-in global binding is `m` / `M` for toggling mouse capture.
+
 Override only the keys you want to change:
 
 ```toml
+[keymap.global]
+"f12" = "toggle-mouse-capture"
+"m" = "none"
+"shift+m" = "none"
+
 [keymap.viewer]
 "esc" = "quit"
 "space" = "page-down"
@@ -286,16 +296,19 @@ Override only the keys you want to change:
 "q" = "none"
 ```
 
-Each configured key replaces its built-in binding. Use `"none"` to remove a binding. Modifiers are exact and support `ctrl`, `alt` (`Option` on macOS), and `shift`. Every action must keep at least one binding.
+Each configured key replaces its built-in binding. Use `"none"` to remove a binding; removing a valid key that is already unbound is harmless. Invalid key names still fail. Every action must keep at least one binding, and a key cannot be assigned in both the global and viewer keymaps.
+
+Modifier matching is exact. `ctrl+j` does not invoke plain `j`, and `alt+q` does not invoke plain `q`. Supported modifiers are `ctrl`, `alt` (`Option` on macOS), and `shift`.
 
 Show the complete effective keymap without opening the TUI:
 
 ```bash
+leaf --show-keymap-actions global
 leaf --show-keymap-actions viewer
 leaf --show-keymap-actions viewer --include-hidden-keymap-actions
 ```
 
-The output lists each key, action, description, and whether that action was affected by `config.toml`. See [`config.toml`](config.toml) for more examples.
+The output lists each key, action, description, and whether that action was affected by `config.toml`. The keymap name is resolved from the registered global and viewer keymaps. See [`config.toml`](config.toml) for more examples.
 
 ## Features
 
