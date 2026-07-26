@@ -192,7 +192,26 @@ pub(crate) fn wrap_help_row(
             current.clear();
             width = continuation_content_width;
         }
-        current.push_str(&text);
+        if current.is_empty() && key_lines.is_empty() && text.chars().count() > width {
+            key_lines.push(String::new());
+            width = continuation_content_width;
+        }
+
+        let mut fragments = split_overlong_help_part(&text, width);
+        if fragments.len() == 1 {
+            current.push_str(&text);
+            continue;
+        }
+
+        let last = fragments
+            .pop()
+            .expect("split help part has a last fragment");
+        key_lines.extend(
+            fragments
+                .into_iter()
+                .map(|fragment| fragment.trim_end().to_string()),
+        );
+        current = last;
     }
     if !current.is_empty() {
         key_lines.push(current.trim_end().to_string());
@@ -210,6 +229,26 @@ pub(crate) fn wrap_help_row(
             description: if index == 0 { row.description } else { "" },
         })
         .collect()
+}
+
+fn split_overlong_help_part(text: &str, width: usize) -> Vec<String> {
+    if text.chars().count() <= width || !text.contains('+') {
+        return vec![text.to_string()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for fragment in text.split_inclusive('+') {
+        if !current.is_empty() && current.chars().count() + fragment.chars().count() > width {
+            lines.push(current);
+            current = String::new();
+        }
+        current.push_str(fragment);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
 }
 
 fn push_leftover_row<A: BindingAction>(

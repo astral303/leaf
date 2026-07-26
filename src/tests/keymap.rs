@@ -325,17 +325,24 @@ fn render_help_popup(viewer_overrides: &BTreeMap<String, String>) -> Vec<String>
         })
         .expect("help popup bottom-right corner");
 
-    (top..=bottom)
+    let mut rows = (top..=bottom)
         .map(|y| {
             (left..=right)
                 .map(|x| buffer.cell((x, y)).unwrap().symbol())
                 .collect()
         })
-        .collect()
+        .collect::<Vec<String>>();
+    let version_text = crate::cli::version_text();
+    let version_row = rows
+        .iter_mut()
+        .find(|row| row.contains(version_text))
+        .expect("help popup version row");
+    *version_row = "│ VERSION                                           │".to_string();
+    rows
 }
 
 fn default_help_popup() -> Vec<String> {
-    let mut expected = r#"┌─ Help ────────────────────────────────────────────┐
+    r#"┌─ Help ────────────────────────────────────────────┐
 │ VERSION                                           │
 │ Keyboard shortcuts                                │
 │                                                   │
@@ -363,13 +370,18 @@ fn default_help_popup() -> Vec<String> {
 └───────────────────────────────────────────────────┘"#
         .lines()
         .map(str::to_string)
-        .collect::<Vec<_>>();
-    expected[1] = format!("│ {:<49} │", crate::cli::version_text());
-    expected
+        .collect()
 }
 
+/// Expected popup for the `esc` / `space` / `backspace` overrides.
+///
+/// It differs from `default_help_popup()` in three places:
+///
+/// - the page row keeps its `,` separator because it wraps;
+/// - a `  bsp/spc` continuation row appears with the two-space indent;
+/// - quit shows `q, esc` instead of `q`.
 fn configured_help_popup() -> Vec<String> {
-    let mut expected = r#"┌─ Help ────────────────────────────────────────────┐
+    r#"┌─ Help ────────────────────────────────────────────┐
 │ VERSION                                           │
 │ Keyboard shortcuts                                │
 │                                                   │
@@ -398,9 +410,7 @@ fn configured_help_popup() -> Vec<String> {
 └───────────────────────────────────────────────────┘"#
         .lines()
         .map(str::to_string)
-        .collect::<Vec<_>>();
-    expected[1] = format!("│ {:<49} │", crate::cli::version_text());
-    expected
+        .collect()
 }
 
 #[test]
@@ -536,6 +546,67 @@ fn wrapped_help_keeps_the_separator_without_adding_a_blank_line() {
             help_line("  bsp/spc", ""),
         ]
     );
+}
+
+#[test]
+fn overlong_single_chord_moves_intact_to_a_continuation_line() {
+    let overrides = BTreeMap::from([
+        ("ctrl+shift+b".to_string(), "scroll-down".to_string()),
+        ("down".to_string(), "none".to_string()),
+        ("j".to_string(), "none".to_string()),
+    ]);
+    let keymap = viewer::resolve(&overrides).unwrap();
+    let row = format_action_help(&keymap, ViewerAction::ScrollDown);
+
+    assert_eq!(
+        wrap_help_row(row, 9, 28, 2),
+        vec![
+            help_line("", "scroll down"),
+            help_line("  ctrl+shift+b", ""),
+        ]
+    );
+}
+
+#[test]
+fn plus_separator_is_the_last_resort_for_an_overlong_chord() {
+    let overrides = BTreeMap::from([
+        ("/".to_string(), "none".to_string()),
+        (
+            "ctrl+alt+shift+enter".to_string(),
+            "start-search".to_string(),
+        ),
+        ("ctrl+f".to_string(), "none".to_string()),
+    ]);
+    let keymap = viewer::resolve(&overrides).unwrap();
+    let row = format_action_help(&keymap, ViewerAction::StartSearch);
+
+    assert_eq!(
+        wrap_help_row(row, 9, 21, 2),
+        vec![
+            help_line("", "find"),
+            help_line("  ctrl+alt+shift+", ""),
+            help_line("  enter", ""),
+        ]
+    );
+}
+
+#[test]
+fn popup_packs_the_right_column_beside_an_overlong_left_chord() {
+    let overrides = BTreeMap::from([
+        ("ctrl+shift+b".to_string(), "scroll-down".to_string()),
+        ("down".to_string(), "none".to_string()),
+        ("j".to_string(), "none".to_string()),
+    ]);
+    let popup = render_help_popup(&overrides);
+    let description_line = popup
+        .iter()
+        .position(|line| line.contains("scroll down"))
+        .expect("scroll-down description");
+
+    assert!(!popup[description_line].contains("ctrl+shift+b"));
+    assert!(popup[description_line].contains("capture"));
+    assert!(popup[description_line + 1].contains("ctrl+shift+b"));
+    assert!(popup[description_line + 1].contains("copy code"));
 }
 
 fn status_hints(viewer_overrides: &BTreeMap<String, String>) -> Vec<String> {
