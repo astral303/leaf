@@ -1,9 +1,11 @@
 use super::{test_assets, test_md_theme, unique_temp_dir};
 use crate::app::{App, AppConfig, FileChange};
 use crate::cli::parse_cli;
+use crate::keymap::global::GlobalAction;
 use crate::markdown::{hash_str, parse_markdown, parse_markdown_with_width, read_file_state};
 use crate::*;
-use crossterm::event::KeyEventKind;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::Rect;
 use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
@@ -355,6 +357,46 @@ fn global_shortcuts_are_disabled_only_while_typing() {
     assert!(!app.global_shortcuts_enabled());
     app.close_file_picker();
     fs::remove_dir(root).unwrap();
+}
+
+#[test]
+fn code_selection_keeps_the_global_mouse_capture_binding_active() {
+    let (ss, theme) = test_assets();
+    let parsed = parse_markdown(
+        "```text\nbody\n```",
+        &ss,
+        &theme,
+        &test_md_theme(),
+        false,
+        true,
+    );
+    let mut app = App::new(
+        parsed.lines,
+        parsed.toc,
+        "test".to_string(),
+        false,
+        false,
+        None,
+        None,
+    );
+    app.set_code_blocks(parsed.code_blocks);
+    app.content_area = Rect::new(0, 0, 80, 20);
+    app.enter_code_select_mode();
+
+    let shortcut = KeyEvent::new(KeyCode::Char('m'), KeyModifiers::empty());
+    let action = app.global_keymap().action_for(&shortcut);
+
+    assert!(app.is_code_select_mode());
+    assert!(app.global_shortcuts_enabled());
+    assert_eq!(action, Some(GlobalAction::ToggleMouseCapture));
+
+    let was_enabled = app.is_mouse_capture_enabled();
+    match action.unwrap() {
+        GlobalAction::ToggleMouseCapture => {
+            app.toggle_mouse_capture();
+        }
+    }
+    assert_ne!(app.is_mouse_capture_enabled(), was_enabled);
 }
 
 #[test]
